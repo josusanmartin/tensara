@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "migrate:blog-data": "tsx prisma/scripts/data-migration-blog-enhancements.ts",
+    "import:kernelbench": "tsx src/scripts/import-kernelbench-problems.ts",
     "seed:local-user": "tsx src/scripts/seed-local-user.ts",
     "dev": "next dev --turbo",
     "postinstall": "prisma generate",
