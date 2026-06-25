@@ -11,7 +11,310 @@ type KernelBenchProblem = {
 };
 
 const SOURCE_NOTE =
-  "Adapted from ScalingIntelligence/KernelBench Level 1 PyTorch operator tasks.";
+  "Adapted from [ScalingIntelligence/KernelBench](https://github.com/ScalingIntelligence/KernelBench) Level 1 PyTorch operator tasks.";
+
+const SOFTSIGN_DESCRIPTION = `${SOURCE_NOTE}
+
+Implement the Softsign activation for a contiguous 2D float32 tensor flattened as a 1D array.
+
+For every element \`x[i]\`, compute:
+
+\`\`\`
+output[i] = x[i] / (1.0 + abs(x[i]))
+\`\`\`
+
+## Function Signature
+
+\`\`\`cpp
+extern "C" void solution(const float* input, float* output, size_t n);
+\`\`\`
+
+## Inputs
+
+- \`input\`: pointer to \`n\` contiguous \`float32\` values.
+- \`output\`: pointer to \`n\` contiguous \`float32\` values that you must write.
+- \`n\`: total number of elements, equal to \`rows * cols\` for the benchmark case.
+
+## Benchmark Cases
+
+The hidden benchmark uses five dense tensors:
+
+- \`4096 x 4096\`
+- \`6144 x 4096\`
+- \`4096 x 7168\`
+- \`4096 x 8192\`
+- \`8192 x 8192\`
+
+Input values are sampled from a normal distribution and scaled by \`4.0\`, so both positive and negative values are expected.
+
+## Correctness
+
+Your result is compared against PyTorch's equivalent expression \`x / (1 + abs(x))\` using \`rtol=1e-4\` and \`atol=1e-5\`.
+
+## Notes
+
+This is a memory-bandwidth-oriented elementwise kernel. Each output element is independent, so a simple grid-stride loop is a good baseline.`;
+
+const HARD_TANH_DESCRIPTION = `${SOURCE_NOTE}
+
+Implement the HardTanh activation for a contiguous 2D float32 tensor flattened as a 1D array.
+
+For every element \`x[i]\`, compute:
+
+\`\`\`
+output[i] = min(max(x[i], -1.0), 1.0)
+\`\`\`
+
+## Function Signature
+
+\`\`\`cpp
+extern "C" void solution(const float* input, float* output, size_t n);
+\`\`\`
+
+## Inputs
+
+- \`input\`: pointer to \`n\` contiguous \`float32\` values.
+- \`output\`: pointer to \`n\` contiguous \`float32\` values that you must write.
+- \`n\`: total number of elements, equal to \`rows * cols\`.
+
+## Benchmark Cases
+
+- \`4096 x 4096\`
+- \`6144 x 4096\`
+- \`4096 x 7168\`
+- \`4096 x 8192\`
+- \`8192 x 8192\`
+
+Input values are sampled from a normal distribution and scaled by \`3.0\`, so many values lie outside the clamp range.
+
+## Correctness
+
+Your result is compared against \`torch.clamp(x, min=-1.0, max=1.0)\` using \`rtol=1e-6\` and \`atol=1e-6\`.
+
+## Notes
+
+This should be implemented as a single pass over memory. Avoid branching-heavy code when simple min/max operations are enough.`;
+
+const INSTANCE_NORM_DESCRIPTION = `${SOURCE_NOTE}
+
+Implement 2D instance normalization for an \`NCHW\` float32 tensor.
+
+For each independent \`(n, c)\` instance, normalize across the spatial dimensions \`H * W\`:
+
+\`\`\`
+mean[n,c] = sum(input[n,c,h,w]) / (H * W)
+var[n,c]  = sum((input[n,c,h,w] - mean[n,c])^2) / (H * W)
+output[n,c,h,w] = (input[n,c,h,w] - mean[n,c]) / sqrt(var[n,c] + epsilon)
+\`\`\`
+
+There is no affine scale or bias.
+
+## Function Signature
+
+\`\`\`cpp
+extern "C" void solution(
+    const float* input,
+    float* output,
+    size_t N,
+    size_t C,
+    size_t H,
+    size_t W,
+    float epsilon
+);
+\`\`\`
+
+## Tensor Layout
+
+The tensor is contiguous in row-major \`NCHW\` order:
+
+\`\`\`
+index = ((n * C + c) * H + h) * W + w
+\`\`\`
+
+## Benchmark Cases
+
+- \`N=16, C=64, H=64, W=64\`
+- \`N=8, C=128, H=64, W=64\`
+- \`N=16, C=128, H=32, W=64\`
+- \`N=32, C=32, H=128, W=64\`
+- \`N=4, C=256, H=64, W=64\`
+
+\`epsilon = 1e-5\` for all cases.
+
+## Correctness
+
+Your result is compared against PyTorch \`F.instance_norm(..., use_input_stats=True, eps=1e-5)\` with no running stats, weight, or bias. Tolerance is \`rtol=1e-4\`, \`atol=1e-4\`.
+
+## Notes
+
+A correct solution usually needs at least one reduction for the mean and one for the variance per \`(n, c)\` pair. The spatial size is large enough that parallel reductions matter.`;
+
+const GROUP_NORM_DESCRIPTION = `${SOURCE_NOTE}
+
+Implement 2D group normalization for a contiguous \`NCHW\` float32 tensor.
+
+For each sample \`n\` and channel group \`g\`, normalize over all channels in that group and all spatial positions:
+
+\`\`\`
+channels_per_group = C / groups
+group_size = channels_per_group * H * W
+
+mean[n,g] = sum(group_values) / group_size
+var[n,g]  = sum((group_values - mean[n,g])^2) / group_size
+output = (input - mean[n,g]) / sqrt(var[n,g] + epsilon)
+\`\`\`
+
+There is no affine scale or bias.
+
+## Function Signature
+
+\`\`\`cpp
+extern "C" void solution(
+    const float* input,
+    float* output,
+    size_t N,
+    size_t C,
+    size_t H,
+    size_t W,
+    int groups,
+    float epsilon
+);
+\`\`\`
+
+## Tensor Layout
+
+The tensor is contiguous in row-major \`NCHW\` order:
+
+\`\`\`
+index = ((n * C + c) * H + h) * W + w
+group = c / (C / groups)
+\`\`\`
+
+## Benchmark Cases
+
+- \`N=16, C=64, H=64, W=64, groups=8\`
+- \`N=8, C=128, H=64, W=64, groups=16\`
+- \`N=16, C=96, H=48, W=64, groups=12\`
+- \`N=32, C=32, H=128, W=64, groups=8\`
+- \`N=4, C=256, H=64, W=64, groups=32\`
+
+\`epsilon = 1e-5\` for all cases.
+
+## Correctness
+
+Your result is compared against PyTorch \`F.group_norm(input, num_groups=groups, weight=None, bias=None, eps=1e-5)\`. Tolerance is \`rtol=1e-4\`, \`atol=1e-4\`.
+
+## Notes
+
+This is a reduction-heavy normalization problem. A common approach is to compute one mean/variance pair per \`(N, group)\`, then normalize every element in that group.`;
+
+const CROSS_ENTROPY_DESCRIPTION = `${SOURCE_NOTE}
+
+Implement mean cross entropy loss for a batch of class logits and integer class labels.
+
+For each row \`i\`, with target class \`labels[i]\`, compute:
+
+\`\`\`
+row_max = max_j logits[i, j]
+log_sum_exp = log(sum_j exp(logits[i, j] - row_max)) + row_max
+loss_i = log_sum_exp - logits[i, labels[i]]
+output[0] = mean_i(loss_i)
+\`\`\`
+
+Use the numerically stable log-sum-exp formulation above. The output is a single scalar.
+
+## Function Signature
+
+\`\`\`cpp
+extern "C" void solution(
+    const float* logits,
+    const int* labels,
+    float* output,
+    size_t N,
+    size_t C
+);
+\`\`\`
+
+## Inputs
+
+- \`logits\`: contiguous \`N x C\` float32 matrix.
+- \`labels\`: contiguous length-\`N\` int32 vector. Each label is in \`[0, C)\`.
+- \`output\`: one float32 scalar. Write the mean loss to \`output[0]\`.
+- \`N\`: batch size.
+- \`C\`: number of classes.
+
+## Benchmark Cases
+
+- \`N=8192, C=256\`
+- \`N=16384, C=512\`
+- \`N=32768, C=256\`
+- \`N=8192, C=1024\`
+- \`N=4096, C=2048\`
+
+## Correctness
+
+Your result is compared against \`torch.nn.functional.cross_entropy(logits, labels, reduction="mean")\` using \`rtol=1e-4\` and \`atol=1e-4\`.
+
+## Notes
+
+Do not compute \`exp(logits)\` directly without subtracting the row maximum; that can overflow. A performant solution usually reduces each row, accumulates losses, then reduces the batch loss to one scalar.`;
+
+const MASKED_CUMSUM_DESCRIPTION = `${SOURCE_NOTE}
+
+Implement an inclusive cumulative sum over a masked 1D float32 vector.
+
+First apply the uint8 mask:
+
+\`\`\`
+masked[i] = mask[i] ? input[i] : 0.0
+\`\`\`
+
+Then compute the inclusive prefix sum:
+
+\`\`\`
+output[i] = masked[0] + masked[1] + ... + masked[i]
+\`\`\`
+
+## Function Signature
+
+\`\`\`cpp
+extern "C" void solution(
+    const float* input,
+    const uint8_t* mask,
+    float* output,
+    size_t n
+);
+\`\`\`
+
+## Inputs
+
+- \`input\`: pointer to \`n\` contiguous \`float32\` values.
+- \`mask\`: pointer to \`n\` contiguous \`uint8_t\` values. Nonzero means include the input value.
+- \`output\`: pointer to \`n\` contiguous \`float32\` values that you must write.
+- \`n\`: total number of elements.
+
+## Benchmark Cases
+
+- \`n=1,048,576\`, mask density \`0.25\`
+- \`n=2,097,152\`, mask density \`0.50\`
+- \`n=4,194,304\`, mask density \`0.75\`
+- \`n=8,388,608\`, mask density \`0.40\`
+- \`n=16,777,216\`, mask density \`0.60\`
+
+## Correctness
+
+Your result is compared against:
+
+\`\`\`python
+masked = torch.where(mask.bool(), input, torch.zeros_like(input))
+torch.cumsum(masked, dim=0)
+\`\`\`
+
+Tolerance is \`rtol=1e-4\`, \`atol=1e-3\`.
+
+## Notes
+
+This is a parallel prefix-scan problem. A single serial loop will be correct but slow. Efficient implementations usually combine block-level scans with a second pass over block sums.`;
 
 const SOFTSIGN = String.raw`
 import torch
@@ -415,42 +718,42 @@ const PROBLEMS: KernelBenchProblem[] = [
   {
     slug: "softsign",
     title: "Softsign",
-    description: `${SOURCE_NOTE} Compute y = x / (1 + abs(x)) elementwise.`,
+    description: SOFTSIGN_DESCRIPTION,
     difficulty: Difficulty.EASY,
     definition: SOFTSIGN,
   },
   {
     slug: "hard-tanh",
     title: "HardTanh",
-    description: `${SOURCE_NOTE} Clamp each element into [-1, 1].`,
+    description: HARD_TANH_DESCRIPTION,
     difficulty: Difficulty.EASY,
     definition: HARD_TANH,
   },
   {
     slug: "instance-norm-2d",
     title: "2D Instance Normalization",
-    description: `${SOURCE_NOTE} Normalize each NCHW sample/channel over its spatial dimensions.`,
+    description: INSTANCE_NORM_DESCRIPTION,
     difficulty: Difficulty.MEDIUM,
     definition: INSTANCE_NORM,
   },
   {
     slug: "group-norm-2d",
     title: "2D Group Normalization",
-    description: `${SOURCE_NOTE} Normalize NCHW tensors over channel groups and spatial dimensions.`,
+    description: GROUP_NORM_DESCRIPTION,
     difficulty: Difficulty.MEDIUM,
     definition: GROUP_NORM,
   },
   {
     slug: "cross-entropy-loss",
     title: "Cross Entropy Loss",
-    description: `${SOURCE_NOTE} Compute the mean cross entropy loss for class logits and integer labels.`,
+    description: CROSS_ENTROPY_DESCRIPTION,
     difficulty: Difficulty.MEDIUM,
     definition: CROSS_ENTROPY,
   },
   {
     slug: "masked-cumsum",
     title: "Masked Cumulative Sum",
-    description: `${SOURCE_NOTE} Apply a boolean mask to a vector, then compute its inclusive cumulative sum.`,
+    description: MASKED_CUMSUM_DESCRIPTION,
     difficulty: Difficulty.HARD,
     definition: MASKED_CUMSUM,
   },
