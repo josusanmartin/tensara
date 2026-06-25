@@ -19,8 +19,9 @@ import { type NextApiRequest, type NextApiResponse } from "next";
 import { type Prisma } from "@prisma/client";
 import { db } from "~/server/db";
 import { env } from "~/env";
+import { engineAuthHeaders } from "~/server/engine-auth";
+import { getLanguageGpuSupportError } from "~/constants/language";
 import { combinedAuth } from "~/server/auth";
-import { checkRateLimit } from "~/hooks/useRateLimit";
 import {
   isSubmissionError,
   SubmissionError,
@@ -31,12 +32,16 @@ import type {
   BenchmarkRunData,
   CheckedResponse,
   SubmissionStatusType,
-  SubmissionErrorType,
   TestResult,
   TestResultResponse,
   WrongAnswerResponse,
 } from "~/types/submission";
 import { proxyUpstreamSSE } from "./sseProxy";
+import {
+  canUserUseProfiler,
+  normalizeProfilingOptions,
+  type ProfilingOptions,
+} from "~/server/profiling";
 
 export default async function handler(
   req: NextApiRequest,
@@ -55,12 +60,26 @@ export default async function handler(
     return;
   }
 
-  const { problemSlug, code, language, gpuType } = req.body as {
-    problemSlug: string;
-    code: string;
-    language: string;
-    gpuType: string;
-  };
+  const { problemSlug, code, language, gpuType, profilingOptions } =
+    req.body as {
+      problemSlug: string;
+      code: string;
+      language: string;
+      gpuType: string;
+      profilingOptions?: ProfilingOptions;
+    };
+  const normalizedProfilingOptions =
+    normalizeProfilingOptions(profilingOptions);
+
+  if (
+    normalizedProfilingOptions &&
+    !(await canUserUseProfiler(session.user.id))
+  ) {
+    res
+      .status(403)
+      .json({ error: "Advanced profiling is not enabled for this account" });
+    return;
+  }
 
   const missing = Object.entries({ problemSlug, code, language, gpuType })
     .filter(([, v]) => v === undefined)
@@ -72,17 +91,13 @@ export default async function handler(
     return;
   }
 
-  const rateLimit = await checkRateLimit(session.user.id);
-  if (!rateLimit.allowed) {
-    res.status(rateLimit.statusCode ?? 429).json({
-      status: SubmissionError.RATE_LIMIT_EXCEEDED as SubmissionErrorType,
-      error: rateLimit.error,
-      details: rateLimit.error,
-    });
+  const languageGpuError = getLanguageGpuSupportError(language, gpuType);
+  if (languageGpuError) {
+    res.status(400).json({ error: languageGpuError });
     return;
   }
 
-  const remainingSubmissions = rateLimit.remainingSubmissions;
+  const remainingSubmissions = 999_999;
 
   const problem = await db.problem.findUnique({
     where: { slug: problemSlug },
@@ -165,6 +180,7 @@ export default async function handler(
     problem_def: submission.problem.definition,
     gpu_type: submission.gpuType,
     language: submission.language,
+    profiling_options: normalizedProfilingOptions,
   };
 
   await db.submission.update({
@@ -257,7 +273,8 @@ export default async function handler(
 
       return "CONTINUE";
     },
-    controller.signal
+    controller.signal,
+    engineAuthHeaders()
   );
 
   if (checkerResult === "STOPPED") {
@@ -400,7 +417,8 @@ export default async function handler(
 
       return "CONTINUE";
     },
-    controller.signal
+    controller.signal,
+    engineAuthHeaders()
   );
 
   clearInterval(heartbeat);

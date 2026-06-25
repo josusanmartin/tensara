@@ -26,12 +26,13 @@ export async function proxyUpstreamSSE(
   url: string,
   payload: unknown,
   onEvent: OnEvent,
-  abort: AbortSignal
+  abort: AbortSignal,
+  headers: Record<string, string> = {}
 ): Promise<"DONE" | "STOPPED"> {
   const upstream = await fetch(url, {
     method: "POST",
     signal: abort,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(payload),
   });
 

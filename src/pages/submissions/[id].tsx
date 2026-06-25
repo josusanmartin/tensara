@@ -42,11 +42,14 @@ import {
   getStatusColor,
   getStatusIcon,
 } from "~/constants/problem";
+import { LANGUAGE_DISPLAY_NAMES } from "~/constants/language";
 import { formatRuntime } from "~/utils/format";
 import { FiCopy, FiHash } from "react-icons/fi";
 import CodeEditor from "~/components/problem/CodeEditor";
 import { type ProgrammingLanguage } from "~/types/misc";
 import { FlopsModal } from "~/components/misc/FlopsModal";
+import { ModerationStatusBadge } from "~/components/submission/ModerationStatusBadge";
+import { InvalidateSubmissionModal } from "~/components/submission/InvalidateSubmissionModal";
 
 type BenchmarkTestResult = {
   test_id: number;
@@ -124,6 +127,11 @@ const SubmissionPage: NextPage<{
     onOpen: onFlopsModalOpen,
     onClose: onFlopsModalClose,
   } = useDisclosure();
+  const {
+    isOpen: isInvalidateModalOpen,
+    onOpen: onInvalidateModalOpen,
+    onClose: onInvalidateModalClose,
+  } = useDisclosure();
 
   const {
     data: submission,
@@ -156,6 +164,30 @@ const SubmissionPage: NextPage<{
       });
     },
   });
+  const invalidateSubmissionMutation =
+    api.submissions.invalidateOwnSubmission.useMutation({
+      onSuccess: async () => {
+        toast({
+          title: "Submission invalidated",
+          description:
+            "This submission no longer counts toward public or competitive views.",
+          status: "success",
+          duration: 4000,
+          isClosable: true,
+        });
+        onInvalidateModalClose();
+        await refetch();
+      },
+      onError: (error) => {
+        toast({
+          title: "Error invalidating submission",
+          description: error.message,
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      },
+    });
 
   // Check if the current user is the submission owner
   const isOwner = session?.user?.id === submission?.userId;
@@ -205,10 +237,20 @@ const SubmissionPage: NextPage<{
     }
   };
 
+  const handleInvalidateSubmission = () => {
+    if (submission?.id) {
+      invalidateSubmissionMutation.mutate({
+        submissionId: submission.id,
+      });
+    }
+  };
+
   // Check if the submission has code (is public or user is owner)
   const hasCode = "code" in submission;
   const isPrivate = !submission.isPublic;
   const canViewCode = hasCode && (!isPrivate || isOwner);
+  const canSelfInvalidate =
+    isOwner && submission.moderationStatus !== "INVALIDATED";
 
   const handleCopyCode = () => {
     console.log("submission", submission);
@@ -263,6 +305,9 @@ const SubmissionPage: NextPage<{
                         {submission.problem.title}
                       </Text>
                     </ChakraLink>
+                    <ModerationStatusBadge
+                      status={submission.moderationStatus}
+                    />
                     <HStack spacing={3}>
                       <Text
                         fontSize="sm"
@@ -274,7 +319,8 @@ const SubmissionPage: NextPage<{
                         py={1}
                         borderRadius="full"
                       >
-                        {submission.language}
+                        {LANGUAGE_DISPLAY_NAMES[submission.language ?? ""] ??
+                          submission.language}
                       </Text>
                       <Text
                         fontSize="sm"
@@ -799,6 +845,7 @@ const SubmissionPage: NextPage<{
                           const l = (submission.language ?? "").toLowerCase();
                           if (l === "cuda") return "cpp";
                           if (l === "triton") return "python";
+                          if (l === "pyptx") return "python";
                           return l;
                         })();
 
@@ -878,17 +925,32 @@ ${code}
                   </Button>
                 )}
                 {isOwner && (
-                  <HStack spacing={2}>
-                    <Text fontSize="sm" color="whiteAlpha.600">
-                      Public
-                    </Text>
-                    <Switch
-                      id="public-toggle"
-                      isChecked={submission.isPublic}
-                      onChange={handleTogglePublic}
-                      colorScheme="blue"
-                      size="sm"
-                    />
+                  <HStack spacing={3} wrap="wrap" justify="flex-end">
+                    {canSelfInvalidate && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        color="red.200"
+                        borderWidth="1px"
+                        borderColor="red.300"
+                        _hover={{ bg: "red.500", color: "white" }}
+                        onClick={onInvalidateModalOpen}
+                      >
+                        Invalidate
+                      </Button>
+                    )}
+                    <HStack spacing={2}>
+                      <Text fontSize="sm" color="whiteAlpha.600">
+                        Public
+                      </Text>
+                      <Switch
+                        id="public-toggle"
+                        isChecked={submission.isPublic}
+                        onChange={handleTogglePublic}
+                        colorScheme="blue"
+                        size="sm"
+                      />
+                    </HStack>
                   </HStack>
                 )}
               </HStack>
@@ -936,6 +998,12 @@ ${code}
           }
         />
       )}
+      <InvalidateSubmissionModal
+        isOpen={isInvalidateModalOpen}
+        onClose={onInvalidateModalClose}
+        onInvalidate={handleInvalidateSubmission}
+        isLoading={invalidateSubmissionMutation.isPending}
+      />
     </Layout>
   );
 };

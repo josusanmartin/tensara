@@ -16,6 +16,8 @@ import {
   Tab,
   TabPanel,
   Text,
+  Button,
+  useToast,
 } from "@chakra-ui/react";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
@@ -33,9 +35,14 @@ import ActivityCalendar from "~/components/profile/ActivityCalendar";
 import { RecentSubmissionsList } from "~/components/profile/RecentSubmissions";
 import UserNotFoundAlert from "~/components/profile/UserNotFoundAlert";
 
-import { FiTrendingUp } from "react-icons/fi";
+import { FiDownload, FiTrendingUp } from "react-icons/fi";
 
 import { api } from "~/utils/api";
+import {
+  buildRunsCsv,
+  downloadCsv,
+  type ExportSubmission,
+} from "~/utils/runCsvExport";
 
 // Define the type for activity data
 interface ActivityItem {
@@ -166,6 +173,7 @@ const BlogPostsList = ({
 export default function UserProfile() {
   const router = useRouter();
   const { username } = router.query;
+  const toast = useToast();
   useSession();
 
   // Fetch user data with tRPC
@@ -187,10 +195,37 @@ export default function UserProfile() {
     ? new Date(userData.joinedAt).getFullYear()
     : new Date().getFullYear();
 
+  const runExportQuery = api.submissions.getProfileRunExport.useQuery(
+    { username: typeof username === "string" ? username : "" },
+    {
+      enabled: false,
+      retry: false,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  const handleExportProfileCsv = async () => {
+    if (typeof username !== "string") return;
+
+    const result = await runExportQuery.refetch();
+    const submissions = result.data as ExportSubmission[] | undefined;
+
+    if (!submissions?.length) {
+      toast({
+        title: "No submissions to export",
+        status: "info",
+        duration: 2500,
+      });
+      return;
+    }
+
+    const csv = buildRunsCsv(submissions);
+    downloadCsv(`${username}-tensara-submissions.csv`, csv);
+  };
+
   if (!username) {
     return null; // Still loading the username parameter
   }
-  console.log("userData?.languagePercentage", userData?.languagePercentage);
 
   return (
     <Layout
@@ -290,6 +325,9 @@ export default function UserProfile() {
                     borderBottom="1px solid"
                     borderColor="brand.dark"
                     align="center"
+                    justify="space-between"
+                    gap={3}
+                    flexWrap="wrap"
                   >
                     <TabList gap={1}>
                       <Tab
@@ -341,6 +379,22 @@ export default function UserProfile() {
                         Blog Posts
                       </Tab>
                     </TabList>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      leftIcon={<Icon as={FiDownload} />}
+                      color="gray.300"
+                      bg="whiteAlpha.50"
+                      _hover={{
+                        bg: "whiteAlpha.100",
+                        color: "white",
+                      }}
+                      onClick={handleExportProfileCsv}
+                      isLoading={runExportQuery.isFetching}
+                      loadingText="Exporting"
+                    >
+                      Export CSV
+                    </Button>
                   </Flex>
                   <TabPanels>
                     <TabPanel px={0} pt={0}>

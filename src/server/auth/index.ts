@@ -66,6 +66,10 @@ export const authAPIKey = async (
       };
     }
 
+    if (!apiKeyRecord.user.isActive) {
+      return { error: "User account is disabled" };
+    }
+
     const session = {
       user: apiKeyRecord.user,
       expires: apiKeyRecord.expiresAt?.toISOString(),

@@ -237,30 +237,97 @@ export default function CLI() {
   const usageExamples = [
     {
       title: "Initialization",
-      command: "tensara init <directory> -p <problem_name> -l <language>",
+      command: "tensara init ./relu -p relu -l cuda",
       description:
-        "Create a template solution file and a problem file in the specified directory",
+        "Create a CUDA template solution and problem files in the specified directory",
       icon: FiFolder,
     },
     {
       title: "Checker Command",
-      command: "tensara checker -g <gpu> -p <problem> -s <solution_file>",
-      description: "Validate your solution against the problem specification",
+      command: "tensara checker -g RTXA6000 -p relu -s ./relu/solution.cu",
+      description:
+        "Validate your solution against the problem specification on the local A6000",
       icon: FiCheckCircle,
     },
     {
       title: "Benchmark Command",
-      command: "tensara benchmark -g <gpu> -p <problem> -s <solution_file>",
-      description: "Benchmark your solution on Tensara problems",
+      command: "tensara benchmark -g RTXA6000 -p relu -s ./relu/solution.cu",
+      description: "Benchmark your solution on the local A6000",
       icon: FiZap,
     },
     {
       title: "Submit Solution",
-      command: "tensara submit -g <gpu> -p <problem> -s <solution_file>",
-      description: "Submit your solution for official evaluation",
+      command: "curl -N http://127.0.0.1:3001/api/submissions/submit",
+      description:
+        "Use the authenticated local submit API for RTXA6000 until the installed CLI supports this GPU",
       icon: FiSend,
     },
   ];
+
+  const submitApiCommand = `curl -N "http://127.0.0.1:3001/api/submissions/submit" \\
+  -H "Authorization: Bearer <your_api_token>" \\
+  -H "Content-Type: application/json" \\
+  --data-binary @- <<'JSON'
+{
+  "problemSlug": "relu",
+  "language": "cuda",
+  "gpuType": "RTXA6000",
+  "code": "<paste solution.cu contents here>"
+}
+JSON`;
+
+  const profilingFields = [
+    {
+      field: "benchmark_results[].runtime_ms",
+      description: "Mean wall-clock kernel run time for each test case.",
+    },
+    {
+      field: "benchmark_results[].benchmark_stats",
+      description:
+        "Run stability data: min, max, mean, standard deviation, CV, iteration count, and convergence.",
+    },
+    {
+      field: "benchmark_results[].memory_bandwidth_gbps",
+      description:
+        "Estimated effective bandwidth. This is usually the best signal for memory-bound kernels like ReLU.",
+    },
+    {
+      field: "benchmark_results[].gpu_metrics",
+      description:
+        "Aggregated NVML telemetry: clocks, temperature, power, utilization, memory use, and throttle flags.",
+    },
+    {
+      field: "benchmark_results[].cuda_kernel_profile.events",
+      description:
+        "CUDA kernel trace rows when kernel tracing is enabled: kernel name, call count, CUDA time, and CPU launch time.",
+    },
+    {
+      field: "benchmark_results[].runs[].gpu_samples",
+      description:
+        "Raw NVML samples when raw sample storage is enabled. Useful for long kernels; coarse for sub-millisecond kernels.",
+    },
+  ];
+
+  const profilingApiCommand = `curl -N "http://127.0.0.1:3001/api/submissions/benchmark" \\
+  -H "Authorization: Bearer <your_api_token>" \\
+  -H "Content-Type: application/json" \\
+  --data-binary @- <<'JSON'
+{
+  "problemSlug": "relu",
+  "language": "cuda",
+  "gpuType": "RTXA6000",
+  "code": "<paste solution.cu contents here>",
+  "profilingOptions": {
+    "min_iterations": 8,
+    "max_iterations": 20,
+    "target_cv": 0.02,
+    "sample_interval_ms": 1,
+    "include_raw_samples": false,
+    "include_cuda_kernel_profile": true,
+    "cuda_kernel_profile_top_k": 12
+  }
+}
+JSON`;
 
   // Animation variants
   const containerVariants = {
@@ -636,7 +703,7 @@ export default function CLI() {
                   <SectionHeader
                     icon={FiCode}
                     title="Command Examples"
-                    description="Essential commands to get you started"
+                    description="Essential commands for the local A6000 runner"
                   />
 
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
@@ -671,6 +738,119 @@ export default function CLI() {
                       </MotionBox>
                     ))}
                   </SimpleGrid>
+                </MotionBox>
+
+                {/* Submit Section */}
+                <MotionBox variants={itemVariants} mb={16}>
+                  <SectionHeader
+                    icon={FiSend}
+                    title="Local A6000 Submission"
+                    description="Submit through the authenticated local API while the installed CLI lacks RTXA6000 support"
+                  />
+
+                  <Box
+                    bg="gray.800"
+                    borderRadius="xl"
+                    p={6}
+                    borderWidth="1px"
+                    borderColor="gray.700"
+                  >
+                    <Text color="gray.300" mb={4}>
+                      The released <Code colorScheme="purple">tensara</Code>{" "}
+                      binary may reject{" "}
+                      <Code colorScheme="purple">RTXA6000</Code>. Use the local
+                      web/API submission route instead; it creates the same
+                      submission record and runs checker plus benchmark on the
+                      local A6000.
+                    </Text>
+                    <TerminalBox command={submitApiCommand} />
+                    <Text color="gray.400" fontSize="sm" mt={4}>
+                      The response is an SSE stream. The first{" "}
+                      <Code colorScheme="purple">IN_QUEUE</Code> event includes
+                      the submission id, and the final{" "}
+                      <Code colorScheme="purple">ACCEPTED</Code> event includes
+                      benchmark results.
+                    </Text>
+                  </Box>
+                </MotionBox>
+
+                {/* Profiling Section */}
+                <MotionBox variants={itemVariants} mb={16}>
+                  <SectionHeader
+                    icon={FiZap}
+                    title="Profiling Data"
+                    description="How to request and read local GPU profiling results"
+                  />
+
+                  <Box
+                    bg="gray.800"
+                    borderRadius="xl"
+                    p={6}
+                    borderWidth="1px"
+                    borderColor="gray.700"
+                    mb={6}
+                  >
+                    <Text color="gray.300" mb={4}>
+                      The released CLI currently benchmarks on the local A6000
+                      with <Code colorScheme="purple">RTXA6000</Code>. Advanced
+                      profiling is exposed through the authenticated local API
+                      so profiler access can be restricted to accounts with the
+                      profiler permission.
+                    </Text>
+                    <TerminalBox command={profilingApiCommand} />
+                    <Text color="gray.400" fontSize="sm" mt={4}>
+                      Replace{" "}
+                      <Code colorScheme="purple">&lt;your_api_token&gt;</Code>{" "}
+                      with an API key from this page. Replace the{" "}
+                      <Code colorScheme="purple">code</Code> value with the
+                      contents of your CUDA solution file. The account that owns
+                      the API key must have profiler access enabled in User
+                      Management.
+                    </Text>
+                  </Box>
+
+                  <Box
+                    bg="gray.800"
+                    borderRadius="xl"
+                    p={6}
+                    borderWidth="1px"
+                    borderColor="gray.700"
+                  >
+                    <Heading size="sm" color="white" mb={4}>
+                      Fields to inspect
+                    </Heading>
+                    <VStack align="stretch" spacing={3}>
+                      {profilingFields.map((item) => (
+                        <Box
+                          key={item.field}
+                          p={4}
+                          borderRadius="md"
+                          bg="whiteAlpha.100"
+                          borderWidth="1px"
+                          borderColor="whiteAlpha.200"
+                        >
+                          <Code colorScheme="purple" fontSize="sm">
+                            {item.field}
+                          </Code>
+                          <Text color="gray.300" fontSize="sm" mt={2}>
+                            {item.description}
+                          </Text>
+                        </Box>
+                      ))}
+                    </VStack>
+
+                    <Text color="gray.400" fontSize="sm" mt={5}>
+                      For memory-bound kernels, prioritize{" "}
+                      <Code colorScheme="purple">memory_bandwidth_gbps</Code>{" "}
+                      and <Code colorScheme="purple">benchmark_stats.cv</Code>.
+                      For deeper CUDA timing, enable the profiler&apos;s CUDA
+                      kernel trace in the web UI; the result will include{" "}
+                      <Code colorScheme="purple">
+                        cuda_kernel_profile.events
+                      </Code>
+                      .
+                    </Text>
+                  </Box>
                 </MotionBox>
               </MotionBox>
             </TabPanel>

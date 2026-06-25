@@ -31,6 +31,17 @@ import {
   type AcceptedResponse,
 } from "~/types/submission";
 
+export type ProfilingOptions = {
+  min_iterations: number;
+  max_iterations: number;
+  target_cv: number;
+  sample_interval_ms: number;
+  long_kernel_threshold: number;
+  include_raw_samples: boolean;
+  include_cuda_kernel_profile: boolean;
+  cuda_kernel_profile_top_k: number;
+};
+
 // Define a type mapping from status to response type
 type ResponseTypeMap = {
   [SubmissionStatus.ACCEPTED]: AcceptedResponse;
@@ -325,6 +336,7 @@ export function useSubmissionStream(refetchSubmissions: () => void) {
       language: string;
       gpuType: string;
       problemSlug: string;
+      profilingOptions?: ProfilingOptions;
     }) => {
       try {
         const response = await fetch("/api/submissions/direct-submit", {

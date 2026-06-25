@@ -14,9 +14,9 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
+  useToast,
 } from "@chakra-ui/react";
-import { FiArrowLeft, FiFilter } from "react-icons/fi";
-import { type Submission } from "@prisma/client";
+import { FiArrowLeft, FiDownload, FiFilter } from "react-icons/fi";
 import { GPU_DISPLAY_ON_PROFILE } from "~/constants/gpu";
 import {
   formatStatus,
@@ -28,9 +28,15 @@ import { FaSortAmountDown } from "react-icons/fa";
 import { useState, useMemo } from "react";
 import { LANGUAGE_PROFILE_DISPLAY_NAMES } from "~/constants/language";
 import { useSplitPanel } from "./SplitPanel";
+import { ModerationStatusBadge } from "~/components/submission/ModerationStatusBadge";
+import {
+  buildRunsCsv,
+  downloadCsv,
+  type ExportSubmission,
+} from "~/utils/runCsvExport";
 
 interface MySubmissionsProps {
-  submissions: Submission[] | undefined;
+  submissions: ExportSubmission[] | undefined;
   isLoading: boolean;
   onBackToProblem: () => void;
 }
@@ -43,6 +49,7 @@ const MySubmissions = ({
   const [statusFilter, setStatusFilter] = useState<string[]>(["all"]);
   const [sortBy, setSortBy] = useState<"time" | "performance">("time");
   const { splitRatio } = useSplitPanel();
+  const toast = useToast();
 
   const useCompactLabels = splitRatio < 40;
 
@@ -81,6 +88,21 @@ const MySubmissions = ({
       shortLabel: "Err",
     },
   ];
+
+  const handleExportCsv = () => {
+    if (filteredSubmissions.length === 0) {
+      toast({
+        title: "No submissions to export",
+        status: "info",
+        duration: 2500,
+      });
+      return;
+    }
+
+    const problemSlug = filteredSubmissions[0]?.problem?.slug ?? "problem";
+    const csv = buildRunsCsv(filteredSubmissions);
+    downloadCsv(`${problemSlug}-submissions.csv`, csv);
+  };
 
   return (
     <VStack spacing={4} align="stretch" p={3}>
@@ -212,6 +234,25 @@ const MySubmissions = ({
           >
             {sortBy === "time" ? "Newest" : "Fastest"}
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleExportCsv}
+            leftIcon={<Icon as={FiDownload} />}
+            color="gray.300"
+            bg="whiteAlpha.50"
+            _focus={{
+              bg: "whiteAlpha.100",
+            }}
+            _hover={{
+              bg: "whiteAlpha.100",
+            }}
+            fontSize="sm"
+            px={3}
+            isDisabled={isLoading || filteredSubmissions.length === 0}
+          >
+            CSV
+          </Button>
         </HStack>
       </VStack>
 
@@ -247,6 +288,9 @@ const MySubmissions = ({
                     <Text fontWeight="semibold">
                       {formatStatus(submission.status)}
                     </Text>
+                    <ModerationStatusBadge
+                      status={submission.moderationStatus}
+                    />
                     <Text color="whiteAlpha.600" fontSize="sm" ml={1}>
                       {LANGUAGE_PROFILE_DISPLAY_NAMES[submission.language]} •{" "}
                       {

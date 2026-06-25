@@ -27,7 +27,7 @@ def _cleanup_gpu_memory():
 
 def _cleanup_solution_temp_dir(language: str, solution_func):
     """Clean up temporary directory for script-based solutions."""
-    if language in ("python", "triton", "cutile"):
+    if language in ("python", "triton", "pyptx", "cutile"):
         try:
             temp_dir = os.path.dirname(solution_func.__code__.co_filename)
             shutil.rmtree(temp_dir)
@@ -372,8 +372,50 @@ def run_sanity_check(
         }
 
 
+def _clamp_int(value, default, min_value, max_value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, min(max_value, parsed))
+
+
+def _clamp_float(value, default, min_value, max_value):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, min(max_value, parsed))
+
+
+def _benchmark_profile_options(profiling_options=None):
+    opts = profiling_options or {}
+    min_iterations = _clamp_int(opts.get("min_iterations"), 5, 1, 50)
+    max_iterations = _clamp_int(opts.get("max_iterations"), 20, min_iterations, 200)
+
+    return {
+        "min_iterations": min_iterations,
+        "max_iterations": max_iterations,
+        "target_cv": _clamp_float(opts.get("target_cv"), 0.01, 0.001, 0.25),
+        "long_kernel_threshold": _clamp_float(
+            opts.get("long_kernel_threshold"), 1.0, 0.01, 30.0
+        ),
+        "sample_interval_ms": _clamp_int(opts.get("sample_interval_ms"), 5, 1, 1000),
+        "include_raw_samples": bool(opts.get("include_raw_samples", True)),
+        "include_cuda_kernel_profile": bool(opts.get("include_cuda_kernel_profile", False)),
+        "cuda_kernel_profile_top_k": _clamp_int(
+            opts.get("cuda_kernel_profile_top_k"), 25, 1, 100
+        ),
+    }
+
+
 def run_benchmark(
-    problem_name: str, problem_def: str, solution_func, language: str, param_func=None
+    problem_name: str,
+    problem_def: str,
+    solution_func,
+    language: str,
+    param_func=None,
+    profiling_options=None,
 ):
     """
     Run benchmark on compiled CUDA solution
@@ -398,12 +440,13 @@ def run_benchmark(
 
         # Initialize statistics
         benchmark_results = []
+        profile = _benchmark_profile_options(profiling_options)
 
         # Prepare GPU for benchmarking (one-time setup at the beginning)
         utils.prepare_gpu()
 
         # Create GPU monitor for collecting metrics during benchmark
-        gpu_monitor = GPUMonitor()
+        gpu_monitor = GPUMonitor(sample_interval_ms=profile["sample_interval_ms"])
 
         # Run each test case
         for test_id, test_case in enumerate(test_cases, 1):
@@ -423,11 +466,15 @@ def run_benchmark(
                     input_tensors,
                     actual_outputs,
                     language=language,
-                    min_iterations=5,
-                    max_iterations=20,
-                    target_cv=0.01,  # 1% target coefficient of variation
+                    min_iterations=profile["min_iterations"],
+                    max_iterations=profile["max_iterations"],
+                    target_cv=profile["target_cv"],
+                    long_kernel_threshold=profile["long_kernel_threshold"],
                     param_func=param_func,
                     gpu_monitor=gpu_monitor,
+                    include_raw_gpu_samples=profile["include_raw_samples"],
+                    include_cuda_kernel_profile=profile["include_cuda_kernel_profile"],
+                    cuda_kernel_profile_top_k=profile["cuda_kernel_profile_top_k"],
                 )
 
                 if benchmark_result.get("status") == "WRONG_ANSWER":

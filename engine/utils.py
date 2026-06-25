@@ -29,6 +29,11 @@ GPU_COMPUTE_CAPABILITIES = {
     "A10G": "86",
     "L40S": "89",
     "L4": "89",
+    # Local workstation aliases. These are useful when serving the engine
+    # directly instead of routing execution through Modal GPU names.
+    "RTX4090": "89",
+    "RTXA6000": "86",
+    "RTX3090": "86",
 }
 
 
@@ -64,6 +69,106 @@ def _strip_c_like_comments_and_strings(s: str) -> str:
     s = re.sub(r"//.*?$", "", s, flags=re.MULTILINE)
 
     return s
+
+
+FRONTEND_FORBIDDEN_PATTERNS = {
+    "cuda": [
+        r"#\s*include\s*<thrust/",
+        r"\bthrust::",
+        r"\bstd::sort\b",
+        r"\bstd::stable_sort\b",
+        r"\bqsort\s*\(",
+    ],
+    "python": [
+        r"\bimport\s+thrust\b",
+        r"\bfrom\s+thrust\b",
+        r"\b(?:tl|torch)\s*\.\s*(?:sort|topk)\b",
+        r"\beval\s*\(",
+        r"\bexec\s*\(",
+        r"\bopen\s*\(",
+        r"__import__",
+        r"\bimportlib\s*\.",
+        r"from\s+[\w\.]*builtin\s+import\s+sort",
+    ],
+    "mojo": [
+        r"from\s+builtin\.sort\s+import\s+sort",
+        r"\bbuiltin\.sort\.sort\b",
+        r"\bsort\s*\(",
+    ],
+}
+
+
+def _map_frontend_submission_language(lang: str) -> str:
+    if not lang:
+        return lang
+    lowered = lang.lower()
+    if lowered in ("triton", "python", "pyptx", "cute", "cutile"):
+        return "python"
+    if lowered in ("cuda", "c++", "cpp"):
+        return "cuda"
+    if lowered == "mojo":
+        return "mojo"
+    return lowered
+
+
+def _strip_frontend_comments_and_strings(s: str, language_key: str) -> str:
+    if not isinstance(s, str) or not s:
+        return s
+
+    import re
+
+    if language_key == "python":
+        s = re.sub(r'"""[\s\S]*?"""', "", s)
+        s = re.sub(r"'''[\s\S]*?'''", "", s)
+        s = re.sub(r'"(?:\\.|[^"\\])*"', "", s)
+        s = re.sub(r"'(?:\\.|[^'\\])*'", "", s)
+        s = re.sub(r"#.*$", "", s, flags=re.MULTILINE)
+        return s
+
+    s = re.sub(r'"(?:\\.|[^"\\])*"', "", s)
+    s = re.sub(r"'(?:\\.|[^'\\])*'", "", s)
+    s = re.sub(r"/\*[\s\S]*?\*/", "", s)
+    s = re.sub(r"//.*$", "", s, flags=re.MULTILINE)
+    return s
+
+
+def _find_frontend_forbidden_match(lang: str, src: str) -> str | None:
+    if not isinstance(src, str) or not src:
+        return None
+
+    import re
+
+    mapped = _map_frontend_submission_language(lang)
+    patterns = FRONTEND_FORBIDDEN_PATTERNS.get(mapped, [])
+    cleaned = _strip_frontend_comments_and_strings(src, mapped)
+
+    for pattern in patterns:
+        if re.search(pattern, cleaned, flags=re.IGNORECASE):
+            return pattern
+
+    return None
+
+
+def _run_frontend_style_validation(language: str, source: str) -> str | None:
+    """Mirror the lightweight starter.ts preflight in the engine hot path."""
+    if not isinstance(source, str):
+        return None
+
+    lowered = (language or "").lower()
+    if lowered in ("python", "triton", "pyptx", "cute", "cutile"):
+        if "torch." in source or "import torch" in source:
+            return "You cannot use PyTorch in the code!"
+
+        import re
+
+        if re.search(r"exec\s*\(\s*[^)]*\)", source):
+            return "You cannot use exec() in the code!"
+
+    matched = _find_frontend_forbidden_match(language, source)
+    if matched:
+        return f"Forbidden usage detected: matched forbidden pattern '{matched}'."
+
+    return None
 
 
 def _extract_paren_group(s: str, open_paren_index: int) -> tuple[str, int] | None:
@@ -483,20 +588,31 @@ def _scan_mojo_forbidden(source: str) -> str | None:
     if re.search(r"\bbuiltin\.sort\.sort\b", cleaned):
         return "Forbidden access to 'builtin.sort.sort' detected."
 
-    # bare sort( is ambiguous; only reject if we also see 'Span' nearby in the file (heuristic)
-    if re.search(r"\bsort\s*\(", cleaned) and re.search(r"\bSpan\b", cleaned):
-        return "Forbidden use of bare 'sort(' on Span types detected."
+    if re.search(r"\bsort\s*\(", cleaned):
+        return "Forbidden use of bare 'sort(' detected."
 
     return None
 
 
 def reject_forbidden_patterns(language: str, source: str):
     """Run the appropriate scanner for the language and raise an error if forbidden patterns found."""
+    frontend_msg = _run_frontend_style_validation(language, source)
+    if frontend_msg:
+        if language == "mojo":
+            raise MojoError(frontend_msg)
+        raise NVCCError(frontend_msg)
+
     if language == "cuda" or language == "c++":
         msg = _scan_cuda_forbidden(source)
         if msg:
             raise NVCCError(msg)
-    elif language == "python" or language == "triton" or language == "cutile" or language == "cute":
+    elif (
+        language == "python"
+        or language == "triton"
+        or language == "pyptx"
+        or language == "cutile"
+        or language == "cute"
+    ):
         msg = _scan_triton_python_forbidden(source, language)
         if msg:
             # reuse NVCCError for a consistent error type the runner knows how to handle
@@ -720,7 +836,7 @@ def read_bytes_as_lib(compiled_lib: bytes):
 
 
 COMPILED_LANGUAGES = ("cuda", "mojo")
-SCRIPT_LANGUAGES = ("python", "triton", "cute", "cutile")
+SCRIPT_LANGUAGES = ("python", "triton", "pyptx", "cute", "cutile")
 
 
 def cast_to_ctype(data, argtypes, language="cuda"):
@@ -809,6 +925,171 @@ def flush_l2_cache():
     torch.cuda.empty_cache()
 
 
+def _estimate_tensor_bytes(value):
+    if isinstance(value, torch.Tensor):
+        return value.nelement() * value.element_size()
+    if isinstance(value, (list, tuple)):
+        return sum(_estimate_tensor_bytes(item) for item in value)
+    if isinstance(value, dict):
+        return sum(_estimate_tensor_bytes(item) for item in value.values())
+    return 0
+
+
+def _runtime_stats(runtimes):
+    if not runtimes:
+        return {
+            "runtime_ms_min": 0,
+            "runtime_ms_max": 0,
+            "runtime_ms_median": 0,
+            "runtime_ms_mean": 0,
+            "runtime_ms_p90": 0,
+            "runtime_ms_stdev": 0,
+            "cv": 0,
+        }
+
+    mean_val = statistics.mean(runtimes)
+    median_val = statistics.median(runtimes)
+    stdev_val = statistics.stdev(runtimes) if len(runtimes) > 1 else 0
+    sorted_runtimes = sorted(runtimes)
+    p90_index = min(
+        len(sorted_runtimes) - 1,
+        max(0, int(0.9 * (len(sorted_runtimes) - 1))),
+    )
+    return {
+        "runtime_ms_min": min(runtimes) * 1000,
+        "runtime_ms_max": max(runtimes) * 1000,
+        "runtime_ms_median": median_val * 1000,
+        "runtime_ms_mean": mean_val * 1000,
+        "runtime_ms_p90": sorted_runtimes[p90_index] * 1000,
+        "runtime_ms_stdev": stdev_val * 1000,
+        "cv": stdev_val / mean_val if mean_val > 0 else float("inf"),
+    }
+
+
+def _aggregate_gpu_metrics(run_metrics):
+    if not run_metrics:
+        return {}
+
+    aggregate = {
+        "sample_count": sum(metric.get("sample_count", 0) for metric in run_metrics),
+        "throttle_reasons_any": 0,
+    }
+    for metric in run_metrics:
+        aggregate["throttle_reasons_any"] |= metric.get("throttle_reasons_any", 0)
+
+    metric_roots = sorted(
+        {
+            key[: -len("_mean")]
+            for metric in run_metrics
+            for key in metric
+            if key.endswith("_mean")
+        }
+    )
+    for root in metric_roots:
+        samples = [
+            (metric[f"{root}_mean"], metric.get("sample_count", 0))
+            for metric in run_metrics
+            if f"{root}_mean" in metric and metric.get("sample_count", 0) > 0
+        ]
+        mins = [metric[f"{root}_min"] for metric in run_metrics if f"{root}_min" in metric]
+        maxes = [metric[f"{root}_max"] for metric in run_metrics if f"{root}_max" in metric]
+        total_count = sum(count for _, count in samples)
+
+        if mins:
+            aggregate[f"{root}_min"] = min(mins)
+        if maxes:
+            aggregate[f"{root}_max"] = max(maxes)
+        if total_count > 0:
+            aggregate[f"{root}_mean"] = (
+                sum(mean * count for mean, count in samples) / total_count
+            )
+
+    pstate_mins = [metric["pstate_min"] for metric in run_metrics if "pstate_min" in metric]
+    pstate_maxes = [metric["pstate_max"] for metric in run_metrics if "pstate_max" in metric]
+    if pstate_mins:
+        aggregate["pstate_min"] = min(pstate_mins)
+    if pstate_maxes:
+        aggregate["pstate_max"] = max(pstate_maxes)
+
+    return aggregate
+
+
+def _collect_cuda_kernel_profile(solution_func, parameters, actual_outputs, top_k):
+    try:
+        activities = [torch.profiler.ProfilerActivity.CPU]
+        if torch.cuda.is_available():
+            activities.append(torch.profiler.ProfilerActivity.CUDA)
+
+        for t in actual_outputs:
+            t.fill_(1.0)
+        torch.cuda.synchronize()
+
+        with torch.profiler.profile(
+            activities=activities,
+            record_shapes=False,
+            profile_memory=True,
+            with_stack=False,
+        ) as prof:
+            solution_func(*parameters)
+            torch.cuda.synchronize()
+
+        rows = []
+        for event in prof.key_averages():
+            if event.count <= 0:
+                continue
+            cuda_total_us = getattr(event, "device_time_total", 0) or getattr(
+                event, "cuda_time_total", 0
+            )
+            cpu_total_us = getattr(event, "cpu_time_total", 0) or 0
+            if cuda_total_us <= 0 and cpu_total_us <= 0:
+                continue
+
+            rows.append(
+                {
+                    "name": event.key,
+                    "calls": event.count,
+                    "cuda_time_total_us": cuda_total_us,
+                    "cuda_time_avg_us": cuda_total_us / event.count
+                    if cuda_total_us
+                    else 0,
+                    "cpu_time_total_us": cpu_total_us,
+                    "cpu_time_avg_us": cpu_total_us / event.count if cpu_total_us else 0,
+                    "self_cpu_time_total_us": getattr(
+                        event, "self_cpu_time_total", 0
+                    )
+                    or 0,
+                    "cpu_memory_usage_bytes": getattr(event, "cpu_memory_usage", 0)
+                    or 0,
+                    "cuda_memory_usage_bytes": getattr(
+                        event, "device_memory_usage", 0
+                    )
+                    or getattr(event, "cuda_memory_usage", 0)
+                    or 0,
+                }
+            )
+
+        rows.sort(
+            key=lambda row: (
+                row["cuda_time_total_us"],
+                row["cpu_time_total_us"],
+            ),
+            reverse=True,
+        )
+        total_cuda_us = sum(row["cuda_time_total_us"] for row in rows)
+        return {
+            "backend": "torch.profiler",
+            "activities": ["CPU", "CUDA"] if torch.cuda.is_available() else ["CPU"],
+            "total_cuda_time_us": total_cuda_us,
+            "events": rows[:top_k],
+            "event_count": len(rows),
+        }
+    except Exception as e:
+        return {
+            "backend": "torch.profiler",
+            "error": str(e),
+        }
+
+
 def run_dynamic_benchmark(
     solution_func,
     problem,
@@ -823,6 +1104,9 @@ def run_dynamic_benchmark(
     long_kernel_threshold=1.0,
     param_func=None,
     gpu_monitor=None,
+    include_raw_gpu_samples=True,
+    include_cuda_kernel_profile=False,
+    cuda_kernel_profile_top_k=25,
 ):
     """
     Run a CUDA benchmark with dynamic stopping based on GFLOPS variance.
@@ -843,6 +1127,9 @@ def run_dynamic_benchmark(
         long_kernel_threshold: Time in seconds above which CV convergence is skipped
         param_func: Optional function to prepare parameters
         gpu_monitor: Optional GPUMonitor instance for collecting GPU metrics
+        include_raw_gpu_samples: Whether to include raw NVML samples in the result
+        include_cuda_kernel_profile: Whether to include CUPTI-backed kernel event timings
+        cuda_kernel_profile_top_k: Number of profiler events to include
 
     Returns:
         benchmark_result: Dictionary with benchmark results. If gpu_monitor is provided,
@@ -863,9 +1150,30 @@ def run_dynamic_benchmark(
 
         solution_func = cute.compile(solution_func, *parameters)
 
-    # Calculate FLOPS for this test case
+    if language == "pyptx":
+        # Exclude first-call tracing/compilation overhead from benchmark timing.
+        for t in actual_outputs:
+            t.fill_(1.0)
+        prewarm_checksums_before = [t.sum().item() for t in actual_outputs]
+        solution_func(*parameters)
+        torch.cuda.synchronize()
+
+        prewarm_checksums_after = [t.sum().item() for t in actual_outputs]
+        for i, (before, after) in enumerate(zip(prewarm_checksums_before, prewarm_checksums_after)):
+            if after == before:
+                return {
+                    "name": test_case["name"],
+                    "test_id": test_id,
+                    "status": "WRONG_ANSWER",
+                    "debug_info": {
+                        "message": f"Mismatched checksum during pyptx prewarm, solution did not modify output {i} ({after} != {before})",
+                    },
+                }
+
+    # Calculate FLOPS and estimated bytes touched for this test case.
     has_flops = problem.supports_flops()
     flops = problem.get_flops(test_case) if has_flops else None
+    memory_bytes = _estimate_tensor_bytes(input_tensors) + _estimate_tensor_bytes(actual_outputs)
 
     # Warm up run
     prepare_gpu()
@@ -896,6 +1204,14 @@ def run_dynamic_benchmark(
             }
 
     initial_runtime = start_event.elapsed_time(end_event) / 1000.0  # Convert to seconds
+    cuda_kernel_profile = None
+    if include_cuda_kernel_profile:
+        cuda_kernel_profile = _collect_cuda_kernel_profile(
+            solution_func,
+            parameters,
+            actual_outputs,
+            cuda_kernel_profile_top_k,
+        )
 
     # Determine if this is a long-running kernel and how many iterations to run
     is_long_kernel = initial_runtime >= long_kernel_threshold
@@ -970,8 +1286,9 @@ def run_dynamic_benchmark(
             run_data = {
                 "run_index": iteration,
                 "runtime_ms": elapsed_time * 1000,
-                "gpu_samples": run_gpu_samples,
             }
+            if include_raw_gpu_samples:
+                run_data["gpu_samples"] = run_gpu_samples
             if run_gpu_metrics:
                 run_data["gpu_metrics"] = run_gpu_metrics
 
@@ -990,20 +1307,38 @@ def run_dynamic_benchmark(
     if gpu_monitor:
         gpu_monitor.stop()
 
-    # Calculate averages
-    mean_runtime = statistics.mean(runtimes) if runtimes else 0
+    # Use the median timed iteration as the scored test-case runtime. Mean and CV
+    # are still recorded for stability diagnostics, but medians are less sensitive
+    # to host/GPU scheduling spikes.
+    scored_runtime = statistics.median(runtimes) if runtimes else 0
+    runtime_stats = _runtime_stats(runtimes)
 
     benchmark_result = {
         "name": test_case["name"],
         "test_id": test_id,
-        "runtime_ms": mean_runtime * 1000,
+        "runtime_ms": scored_runtime * 1000,
+        "benchmark_stats": {
+            **runtime_stats,
+            "iterations": len(runtimes),
+            "target_cv": target_cv,
+            "converged": runtime_stats["cv"] < target_cv if len(runtimes) > 1 else False,
+            "is_long_kernel": is_long_kernel,
+        },
     }
 
     if gpu_monitor:
         benchmark_result["runs"] = runs
+        run_metrics = [run.get("gpu_metrics") for run in runs if run.get("gpu_metrics")]
+        if run_metrics:
+            benchmark_result["gpu_metrics"] = _aggregate_gpu_metrics(run_metrics)
 
-    if has_flops and flops is not None and mean_runtime > 0:
-        benchmark_result["gflops"] = (flops / mean_runtime) / 1e9
+    if has_flops and flops is not None and scored_runtime > 0:
+        benchmark_result["gflops"] = (flops / scored_runtime) / 1e9
+    if memory_bytes > 0 and scored_runtime > 0:
+        benchmark_result["memory_bytes"] = memory_bytes
+        benchmark_result["memory_bandwidth_gbps"] = (memory_bytes / scored_runtime) / 1e9
+    if cuda_kernel_profile is not None:
+        benchmark_result["cuda_kernel_profile"] = cuda_kernel_profile
 
     return benchmark_result
 
@@ -1015,20 +1350,28 @@ def convert_slug_to_module_name(slug: str) -> str:
     return slug.replace("-", "_")
 
 
+def _subproc_generator_entry(func_module, func_name, my_queue, args, kwargs):
+    try:
+        module = importlib.import_module(func_module)
+        func = getattr(module, func_name)
+        func = getattr(func, "__wrapped__", func)
+        result = func(*args, **kwargs)
+        for ev in result:
+            my_queue.put(ev)
+    finally:
+        my_queue.put(None)
+
+
 def subproc_generator(timeout=None):
     def _subproc_generator(func):
-        def subproc_wrapper(my_queue, *args, **kwargs):
-            try:
-                result = func(*args, **kwargs)
-                for ev in result:
-                    my_queue.put(ev)
-            finally:
-                my_queue.put(None)
-
         @wraps(func)
         def wrapper(*args, **kwargs):
-            my_queue = mp.Queue()
-            proc = mp.Process(target=subproc_wrapper, args=(my_queue,) + args, kwargs=kwargs)
+            ctx = mp.get_context("spawn")
+            my_queue = ctx.Queue()
+            proc = ctx.Process(
+                target=_subproc_generator_entry,
+                args=(func.__module__, func.__name__, my_queue, args, kwargs),
+            )
             proc.start()
             while True:
                 try:
@@ -1090,12 +1433,19 @@ def make_solution_func(language: str, solution_code: str, compiled: bytes, probl
     elif language in SCRIPT_LANGUAGES:
         # Run Python/Triton AST checks to reject forbidden patterns
         if solution_code:
-            pattern_lang = "cutile" if language == "cutile" else "triton"
+            if language == "cutile":
+                pattern_lang = "cutile"
+            elif language == "pyptx":
+                pattern_lang = "pyptx"
+            else:
+                pattern_lang = "triton"
             reject_forbidden_patterns(pattern_lang, solution_code)
             validate_python_solution_signature_from_source(solution_code, expected_arity)
 
         if language == "cutile":
             filename = "cutile_solution.py"
+        elif language == "pyptx":
+            filename = "pyptx_solution.py"
         elif language == "cute":
             filename = "cute_solution.py"
         else:

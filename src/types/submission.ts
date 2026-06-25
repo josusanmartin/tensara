@@ -70,6 +70,20 @@ export type BenchmarkResult = {
   test_id: number;
   gflops?: number;
   runtime_ms: number;
+  memory_bytes?: number;
+  memory_bandwidth_gbps?: number;
+  benchmark_stats?: {
+    runtime_ms_min: number;
+    runtime_ms_max: number;
+    runtime_ms_mean: number;
+    runtime_ms_stdev: number;
+    cv: number;
+    iterations: number;
+    target_cv: number;
+    converged: boolean;
+    is_long_kernel: boolean;
+  };
+  cuda_kernel_profile?: CudaKernelProfile;
 };
 
 // GPU Monitoring Types
@@ -83,6 +97,11 @@ export interface GPUSample {
   temp_c: number; // GPU temperature in Celsius
   pstate: number; // Performance state (0 = max performance)
   throttle_reasons: number; // Bitmask of active throttle reasons
+  power_w?: number;
+  gpu_utilization_pct?: number;
+  memory_utilization_pct?: number;
+  memory_used_mb?: number;
+  memory_total_mb?: number;
 }
 
 /**
@@ -103,6 +122,42 @@ export interface GPUMetricsStats {
   pstate_max: number;
   // Throttle reasons (OR of all seen during run)
   throttle_reasons_any: number;
+  power_w_min?: number;
+  power_w_max?: number;
+  power_w_mean?: number;
+  gpu_utilization_pct_min?: number;
+  gpu_utilization_pct_max?: number;
+  gpu_utilization_pct_mean?: number;
+  memory_utilization_pct_min?: number;
+  memory_utilization_pct_max?: number;
+  memory_utilization_pct_mean?: number;
+  memory_used_mb_min?: number;
+  memory_used_mb_max?: number;
+  memory_used_mb_mean?: number;
+  memory_total_mb_min?: number;
+  memory_total_mb_max?: number;
+  memory_total_mb_mean?: number;
+}
+
+export interface CudaKernelProfileEvent {
+  name: string;
+  calls: number;
+  cuda_time_total_us: number;
+  cuda_time_avg_us: number;
+  cpu_time_total_us: number;
+  cpu_time_avg_us: number;
+  self_cpu_time_total_us: number;
+  cpu_memory_usage_bytes: number;
+  cuda_memory_usage_bytes: number;
+}
+
+export interface CudaKernelProfile {
+  backend: string;
+  activities?: string[];
+  total_cuda_time_us?: number;
+  events?: CudaKernelProfileEvent[];
+  event_count?: number;
+  error?: string;
 }
 
 /**

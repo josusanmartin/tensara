@@ -3,7 +3,6 @@
 //  *
 //  * API route that proxies sample submissions to the Modal GPU runner.
 //  * - Authenticates the user and validates the request body.
-//  * - Resets and decrements the user’s daily sample submission quota atomically.
 //  * - Streams Modal’s raw SSE response directly back to the frontend (true proxy).
 //  * - Aborts upstream request cleanly if the client disconnects.
 //  *
@@ -11,7 +10,8 @@
 //  */
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { env } from "~/env";
-import { DateTime } from "luxon";
+import { engineAuthHeaders } from "~/server/engine-auth";
+import { getLanguageGpuSupportError } from "~/constants/language";
 import { combinedAuth } from "~/server/auth";
 import { db } from "~/server/db";
 import { proxyUpstreamSSE } from "./sseProxy";
@@ -52,49 +52,18 @@ export default async function handler(
     return;
   }
 
+  const languageGpuError = getLanguageGpuSupportError(language!, gpuType);
+  if (languageGpuError) {
+    res.status(400).json({ error: languageGpuError });
+    return;
+  }
+
   const problem = await db.problem.findUnique({
     where: { slug: problemSlug! },
     select: { definition: true },
   });
   if (!problem) {
     res.status(404).json({ error: "Problem not found" });
-    return;
-  }
-
-  // Quota: atomic reset + upfront decrement (Option B)
-  const today = DateTime.now().startOf("day");
-  const quotaOk = await db.$transaction(async (tx) => {
-    const u = await tx.user.findUnique({
-      where: { id: session.user.id },
-      select: { sampleSubmissionCount: true, lastSampleSubmissionReset: true },
-    });
-    if (!u) return false;
-
-    const lastReset = DateTime.fromJSDate(u.lastSampleSubmissionReset).startOf(
-      "day"
-    );
-    if (lastReset < today) {
-      await tx.user.update({
-        where: { id: session.user.id },
-        data: {
-          sampleSubmissionCount: 200,
-          lastSampleSubmissionReset: today.toJSDate(),
-        },
-      });
-    }
-
-    const dec = await tx.user.updateMany({
-      where: { id: session.user.id, sampleSubmissionCount: { gt: 0 } },
-      data: {
-        sampleSubmissionCount: { decrement: 1 },
-        totalSampleSubmissions: { increment: 1 },
-      },
-    });
-    return dec.count === 1;
-  });
-
-  if (!quotaOk) {
-    res.status(429).json({ error: "Too Many Requests: Sample limit exceeded" });
     return;
   }
 
@@ -123,7 +92,8 @@ export default async function handler(
       `${env.MODAL_ENDPOINT}/sample-${gpuType}`,
       payload,
       async () => "CONTINUE",
-      controller.signal
+      controller.signal,
+      engineAuthHeaders()
     );
 
     // proxyUpstreamSSE already wrote any upstream error status/body; we just end.

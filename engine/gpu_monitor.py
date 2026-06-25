@@ -54,6 +54,30 @@ class GPUMonitor:
                 throttle_reasons = self.pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(
                     self.handle
                 )
+                power_w = None
+                gpu_utilization = None
+                memory_utilization = None
+                memory_used_mb = None
+                memory_total_mb = None
+
+                try:
+                    power_w = self.pynvml.nvmlDeviceGetPowerUsage(self.handle) / 1000.0
+                except Exception:
+                    pass
+
+                try:
+                    utilization = self.pynvml.nvmlDeviceGetUtilizationRates(self.handle)
+                    gpu_utilization = utilization.gpu
+                    memory_utilization = utilization.memory
+                except Exception:
+                    pass
+
+                try:
+                    memory_info = self.pynvml.nvmlDeviceGetMemoryInfo(self.handle)
+                    memory_used_mb = memory_info.used / (1024 * 1024)
+                    memory_total_mb = memory_info.total / (1024 * 1024)
+                except Exception:
+                    pass
 
                 # Use provided run_key or fall back to current_run_key
                 sample_run_key = run_key if run_key is not None else self.current_run_key
@@ -66,6 +90,16 @@ class GPUMonitor:
                     "throttle_reasons": throttle_reasons,
                     "run_key": sample_run_key,
                 }
+                if power_w is not None:
+                    sample["power_w"] = power_w
+                if gpu_utilization is not None:
+                    sample["gpu_utilization_pct"] = gpu_utilization
+                if memory_utilization is not None:
+                    sample["memory_utilization_pct"] = memory_utilization
+                if memory_used_mb is not None:
+                    sample["memory_used_mb"] = memory_used_mb
+                if memory_total_mb is not None:
+                    sample["memory_total_mb"] = memory_total_mb
 
                 with self.lock:
                     self.samples.append(sample)
@@ -151,7 +185,15 @@ class GPUMonitor:
 
         stats = {"sample_count": len(samples)}
 
-        full_metrics = ["temp_c", "sm_clock_mhz"]
+        full_metrics = [
+            "temp_c",
+            "sm_clock_mhz",
+            "power_w",
+            "gpu_utilization_pct",
+            "memory_utilization_pct",
+            "memory_used_mb",
+            "memory_total_mb",
+        ]
 
         for metric in full_metrics:
             values = [s[metric] for s in samples if metric in s]

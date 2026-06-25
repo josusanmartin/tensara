@@ -26,7 +26,7 @@ import { api } from "~/utils/api";
 import { Layout } from "~/components/layout";
 import Link from "next/link";
 import { formatDistanceToNow, format } from "date-fns";
-import type { Submission } from "@prisma/client";
+import type { SubmissionModerationStatus } from "@prisma/client";
 import { createServerSideHelpers } from "@trpc/react-query/server";
 import { appRouter } from "~/server/api/root";
 import { createInnerTRPCContext } from "~/server/api/trpc";
@@ -45,6 +45,7 @@ import {
   FaAngleDoubleRight,
 } from "react-icons/fa";
 import { formatRuntime } from "~/utils/format";
+import { ModerationStatusBadge } from "~/components/submission/ModerationStatusBadge";
 type SortField =
   | "createdAt"
   | "status"
@@ -54,7 +55,14 @@ type SortField =
   | "language";
 type SortOrder = "asc" | "desc";
 
-interface SubmissionWithProblem extends Submission {
+interface SubmissionWithProblem {
+  id: string;
+  createdAt: Date;
+  status: string | null;
+  moderationStatus: SubmissionModerationStatus | null;
+  runtime: number | null;
+  language: string;
+  gpuType: string | null;
   problem: {
     title: string;
     slug: string;
@@ -508,14 +516,19 @@ const SubmissionsPage: NextPage = () => {
                         cursor: "pointer",
                       }}
                     >
-                      <Badge
-                        colorScheme={getStatusColor(submission.status)}
-                        borderRadius="md"
-                        py={0.5}
-                        px={2}
-                      >
-                        {formatStatus(submission.status)}
-                      </Badge>
+                      <HStack spacing={2}>
+                        <Badge
+                          colorScheme={getStatusColor(submission.status)}
+                          borderRadius="md"
+                          py={0.5}
+                          px={2}
+                        >
+                          {formatStatus(submission.status)}
+                        </Badge>
+                        <ModerationStatusBadge
+                          status={submission.moderationStatus}
+                        />
+                      </HStack>
                     </Link>
                   </Td>
                   <Td borderBottom="1px solid" borderColor="whiteAlpha.100">

@@ -1,8 +1,8 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
 import { env } from "~/env";
+import { engineAuthHeaders } from "~/server/engine-auth";
 import { combinedAuth } from "~/server/auth";
-import { checkRateLimit } from "~/hooks/useRateLimit";
 import { type ProgrammingLanguage } from "~/types/misc";
 import { SubmissionError, SubmissionStatus } from "~/types/submission";
 import type { SubmissionErrorType } from "~/types/submission";
@@ -46,16 +46,6 @@ export default async function handler(
   if (!supportedLanguages.includes(selectedLanguage)) {
     res.status(400).json({
       error: "Unsupported language for sandbox",
-    });
-    return;
-  }
-
-  const rateLimit = await checkRateLimit(session.user.id);
-  if (!rateLimit.allowed) {
-    res.status(rateLimit.statusCode ?? 429).json({
-      status: SubmissionError.RATE_LIMIT_EXCEEDED as SubmissionErrorType,
-      error: rateLimit.error,
-      details: rateLimit.error,
     });
     return;
   }
@@ -137,6 +127,7 @@ export default async function handler(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...engineAuthHeaders(),
       },
       body: JSON.stringify({
         code: submission.code,

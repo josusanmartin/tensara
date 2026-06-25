@@ -19,11 +19,12 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
+  Portal,
 } from "@chakra-ui/react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { FiGithub, FiMenu, FiChevronDown } from "react-icons/fi";
+import { FiLogIn, FiMenu, FiChevronDown } from "react-icons/fi";
 import { useState, useEffect } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import React from "react";
@@ -64,7 +65,7 @@ export function Header({ isCodingMode = false, toolbar }: HeaderProps) {
   ];
 
   const handleSignIn = () => {
-    signIn("github", { callbackUrl: router.asPath }).catch(console.error);
+    signIn(undefined, { callbackUrl: router.asPath }).catch(console.error);
   };
 
   const handleSignOut = () => {
@@ -127,11 +128,20 @@ export function Header({ isCodingMode = false, toolbar }: HeaderProps) {
         {status === "authenticated" ? (
           <Menu isOpen={menuIsOpen} onOpen={menuOnOpen} onClose={menuOnClose}>
             <MenuButton
-              as={Box}
+              as={Button}
+              variant="ghost"
+              h="auto"
+              minW={0}
+              p={0}
+              bg="transparent"
               _hover={{
                 cursor: "pointer",
                 transform: "translateY(-1px)",
                 boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                bg: "whiteAlpha.100",
+              }}
+              _active={{
+                bg: "whiteAlpha.200",
               }}
               transition="all 0.3s ease"
             >
@@ -189,79 +199,100 @@ export function Header({ isCodingMode = false, toolbar }: HeaderProps) {
                 )}
               </HStack>
             </MenuButton>
-            <MenuList
-              bg="brand.secondary"
-              borderColor="whiteAlpha.200"
-              borderRadius="md"
-              p={0}
-              overflow="hidden"
-              minW="180px"
-              boxShadow="0 10px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.2)"
-            >
-              <MenuItem
-                as={Link}
-                href={`/user/${session.user?.username}`}
-                bg="transparent"
-                _hover={{
-                  bg: "rgba(75, 85, 99, 0.5)",
-                  transition: "all 0.3s ease-in-out",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                }}
-                transition="all 0.15s ease"
-                px={4}
-                py={2}
+            <Portal>
+              <MenuList
+                bg="brand.secondary"
+                borderColor="whiteAlpha.200"
                 borderRadius="md"
+                p={0}
+                overflow="hidden"
+                minW="180px"
+                zIndex={2000}
+                boxShadow="0 10px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.2)"
               >
-                My Profile
-              </MenuItem>
-              <MenuItem
-                as={Link}
-                href="/submissions"
-                bg="transparent"
-                _hover={{
-                  bg: "rgba(75, 85, 99, 0.5)",
-                  transition: "all 0.3s ease-in-out",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                }}
-                transition="all 0.15s ease"
-                px={4}
-                py={2}
-                borderRadius="md"
-              >
-                Submissions
-              </MenuItem>
-              <MenuItem
-                as={Link}
-                href="/cli"
-                bg="transparent"
-                _hover={{
-                  bg: "rgba(75, 85, 99, 0.5)",
-                  transition: "all 0.3s ease-in-out",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                }}
-                transition="all 0.15s ease"
-                px={4}
-                py={2}
-                borderRadius="md"
-              >
-                CLI & API Keys
-              </MenuItem>
-              <MenuItem
-                onClick={handleSignOut}
-                bg="transparent"
-                _hover={{
-                  bg: "rgba(75, 85, 99, 0.5)",
-                  transition: "all 0.3s ease-in-out",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                }}
-                transition="all 0.15s ease"
-                px={4}
-                py={2}
-                borderRadius="md"
-              >
-                Sign Out
-              </MenuItem>
-            </MenuList>
+                <MenuItem
+                  as={Link}
+                  href={`/user/${session.user?.username}`}
+                  bg="transparent"
+                  _hover={{
+                    bg: "rgba(75, 85, 99, 0.5)",
+                    transition: "all 0.3s ease-in-out",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                  }}
+                  transition="all 0.15s ease"
+                  px={4}
+                  py={2}
+                  borderRadius="md"
+                >
+                  My Profile
+                </MenuItem>
+                <MenuItem
+                  as={Link}
+                  href="/submissions"
+                  bg="transparent"
+                  _hover={{
+                    bg: "rgba(75, 85, 99, 0.5)",
+                    transition: "all 0.3s ease-in-out",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                  }}
+                  transition="all 0.15s ease"
+                  px={4}
+                  py={2}
+                  borderRadius="md"
+                >
+                  Submissions
+                </MenuItem>
+                <MenuItem
+                  as={Link}
+                  href="/cli"
+                  bg="transparent"
+                  _hover={{
+                    bg: "rgba(75, 85, 99, 0.5)",
+                    transition: "all 0.3s ease-in-out",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                  }}
+                  transition="all 0.15s ease"
+                  px={4}
+                  py={2}
+                  borderRadius="md"
+                >
+                  CLI & API Keys
+                </MenuItem>
+                {session.user?.isAdmin && (
+                  <MenuItem
+                    as={Link}
+                    href="/admin/users"
+                    bg="transparent"
+                    _hover={{
+                      bg: "rgba(75, 85, 99, 0.5)",
+                      transition: "all 0.3s ease-in-out",
+                      boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                    }}
+                    transition="all 0.15s ease"
+                    px={4}
+                    py={2}
+                    borderRadius="md"
+                  >
+                    User Management
+                  </MenuItem>
+                )}
+                <MenuItem
+                  onClick={handleSignOut}
+                  bg="transparent"
+                  _hover={{
+                    bg: "rgba(75, 85, 99, 0.5)",
+                    transition: "all 0.3s ease-in-out",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                  }}
+                  transition="all 0.15s ease"
+                  px={4}
+                  py={2}
+                  borderRadius="md"
+                >
+                  Sign Out
+                </MenuItem>
+              </MenuList>
+            </Portal>
           </Menu>
         ) : (
           <Button
@@ -270,7 +301,7 @@ export function Header({ isCodingMode = false, toolbar }: HeaderProps) {
             onClick={handleSignIn}
             size={isCodingMode ? "sm" : "md"}
             fontSize={isCodingMode ? "11px" : "sm"}
-            leftIcon={<Icon as={FiGithub} boxSize={isCodingMode ? 4 : 5} />}
+            leftIcon={<Icon as={FiLogIn} boxSize={isCodingMode ? 4 : 5} />}
             bg="#24292e"
             _hover={{
               bg: "#2f363d",
@@ -278,7 +309,7 @@ export function Header({ isCodingMode = false, toolbar }: HeaderProps) {
             h={isCodingMode ? "30px" : undefined}
             px={isCodingMode ? 3 : undefined}
           >
-            Sign in with GitHub
+            Sign in
           </Button>
         )}
       </>

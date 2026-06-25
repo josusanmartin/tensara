@@ -25,19 +25,33 @@ import {
   ModalCloseButton,
   useDisclosure,
   Link as ChakraLink,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverBody,
+  PopoverArrow,
+  FormControl,
+  FormLabel,
+  Switch,
+  NumberInput,
+  NumberInputField,
+  NumberInputStepper,
+  NumberIncrementStepper,
+  NumberDecrementStepper,
 } from "@chakra-ui/react";
 import { useSession } from "next-auth/react";
 import superjson from "superjson";
 import { useHotkey } from "~/hooks/useHotKey";
 
 import type { GetServerSideProps } from "next";
-import { type Problem, type Submission } from "@prisma/client";
+import { type Problem } from "@prisma/client";
 import NextLink from "next/link";
 
 import { Layout } from "~/components/layout";
 import MySubmissions from "~/components/problem/MySubmissions";
 import ProblemView from "~/components/problem/ProblemView";
 import CodeEditor from "~/components/problem/CodeEditor";
+import LanguageResources from "~/components/problem/LanguageResources";
 import SubmissionResults from "~/components/problem/SubmissionResults";
 import ResetCodeModal from "~/components/problem/ResetCodeModal";
 import SplitPanel from "~/components/problem/SplitPanel";
@@ -45,12 +59,14 @@ import ResizableConsole from "~/components/problem/Console";
 import VerticalSplitPanel from "~/components/problem/VerticalSplitPanel";
 
 import { FaChevronDown, FaExclamationCircle } from "react-icons/fa";
-import { FiBookOpen, FiList } from "react-icons/fi";
+import { FiBookOpen, FiList, FiSliders } from "react-icons/fi";
 import { IoRepeat } from "react-icons/io5";
 
 import { useCodePersistence } from "~/hooks/useCodePersistence";
 import { useSubmissionStream } from "~/hooks/useSubmissionStream";
+import type { ProfilingOptions } from "~/hooks/useSubmissionStream";
 import { useSampleStream } from "~/hooks/useSampleStream";
+import type { ExportSubmission } from "~/utils/runCsvExport";
 
 import {
   SampleStatus,
@@ -72,8 +88,12 @@ import Editor from "@monaco-editor/react";
 import { FlopsModal } from "~/components/misc/FlopsModal";
 import { GpuInfoModal } from "~/components/misc/GpuInfoModal";
 import { LanguageInfoModal } from "~/components/misc/LanguageInfoModal";
-import { GPU_DISPLAY_NAMES } from "~/constants/gpu";
-import { LANGUAGE_DISPLAY_NAMES } from "~/constants/language";
+import { getAllowedGpuTypes, GPU_DISPLAY_NAMES } from "~/constants/gpu";
+import {
+  getLanguageGpuSupportError,
+  isLanguageSupportedOnGpu,
+  LANGUAGE_DISPLAY_NAMES,
+} from "~/constants/language";
 
 type ViewType = "submissions" | "problem" | "result";
 
@@ -169,7 +189,7 @@ export default function ProblemPage({ slug }: { slug: string }) {
     { problemSlug: slug },
     { enabled: !!slug }
   ) as {
-    data?: { submissions: Submission[]; nextCursor: string | null };
+    data?: { submissions: ExportSubmission[]; nextCursor: string | null };
     isLoading: boolean;
     refetch: () => void;
   };
@@ -189,11 +209,69 @@ export default function ProblemPage({ slug }: { slug: string }) {
   const [selectedGpuType, setSelectedGpuType] = useState("T4");
   const [isVimModeEnabled, setIsVimModeEnabled] = useState(false);
   const [hasLoadedVimPreference, setHasLoadedVimPreference] = useState(false);
+  const [isAdvancedProfilingEnabled, setIsAdvancedProfilingEnabled] =
+    useState(false);
+  const [profileMinIterations, setProfileMinIterations] = useState(5);
+  const [profileMaxIterations, setProfileMaxIterations] = useState(20);
+  const [profileTargetCvPercent, setProfileTargetCvPercent] = useState(1);
+  const [profileSampleIntervalMs, setProfileSampleIntervalMs] = useState(5);
+  const [profileLongKernelThreshold, setProfileLongKernelThreshold] =
+    useState(1);
+  const [profileIncludeRawSamples, setProfileIncludeRawSamples] =
+    useState(true);
+  const [profileIncludeCudaKernelProfile, setProfileIncludeCudaKernelProfile] =
+    useState(false);
+  const [profileCudaKernelProfileTopK, setProfileCudaKernelProfileTopK] =
+    useState(25);
+
+  const profilingOptions = useMemo<ProfilingOptions | undefined>(() => {
+    if (!isAdvancedProfilingEnabled) return undefined;
+
+    const minIterations = Math.max(1, Math.round(profileMinIterations));
+    const maxIterations = Math.max(
+      minIterations,
+      Math.round(profileMaxIterations)
+    );
+
+    return {
+      min_iterations: minIterations,
+      max_iterations: maxIterations,
+      target_cv: Math.max(0.1, profileTargetCvPercent) / 100,
+      sample_interval_ms: Math.max(1, Math.round(profileSampleIntervalMs)),
+      long_kernel_threshold: Math.max(0.01, profileLongKernelThreshold),
+      include_raw_samples: profileIncludeRawSamples,
+      include_cuda_kernel_profile: profileIncludeCudaKernelProfile,
+      cuda_kernel_profile_top_k: Math.max(
+        1,
+        Math.round(profileCudaKernelProfileTopK)
+      ),
+    };
+  }, [
+    isAdvancedProfilingEnabled,
+    profileCudaKernelProfileTopK,
+    profileIncludeCudaKernelProfile,
+    profileIncludeRawSamples,
+    profileLongKernelThreshold,
+    profileMaxIterations,
+    profileMinIterations,
+    profileSampleIntervalMs,
+    profileTargetCvPercent,
+  ]);
 
   const allowedGpus = useMemo(() => {
     const gpus = (problem as { gpus?: string[] } | null)?.gpus;
     return gpus?.length ? gpus : undefined;
   }, [problem]);
+
+  const baseGpuOptions = useMemo(
+    () => getAllowedGpuTypes(allowedGpus),
+    [allowedGpus]
+  );
+
+  const languageGpuError = useMemo(
+    () => getLanguageGpuSupportError(selectedLanguage, selectedGpuType),
+    [selectedLanguage, selectedGpuType]
+  );
 
   // Update GPU type when saved preferences are loaded
   useEffect(() => {
@@ -204,11 +282,18 @@ export default function ProblemPage({ slug }: { slug: string }) {
 
   // If problem restricts GPUs and current selection isn't allowed, pick first allowed
   useEffect(() => {
-    if (!allowedGpus?.length) return;
     setSelectedGpuType((current) =>
-      allowedGpus.includes(current) ? current : (allowedGpus[0] ?? "T4")
+      baseGpuOptions.length === 0 || baseGpuOptions.includes(current)
+        ? current
+        : (baseGpuOptions[0] ?? current)
     );
-  }, [allowedGpus]);
+  }, [baseGpuOptions]);
+
+  useEffect(() => {
+    if (!isLanguageSupportedOnGpu(selectedLanguage, selectedGpuType)) {
+      setSelectedLanguage("cuda");
+    }
+  }, [selectedLanguage, selectedGpuType, setSelectedLanguage]);
 
   useEffect(() => {
     const stored = loadVimModePreference();
@@ -466,6 +551,17 @@ export default function ProblemPage({ slug }: { slug: string }) {
       return;
     }
 
+    if (languageGpuError) {
+      toast({
+        title: "Unsupported GPU",
+        description: languageGpuError,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
     const { valid, error } = validateCode(code, selectedLanguage);
     if (!valid) {
       toast({
@@ -486,6 +582,7 @@ export default function ProblemPage({ slug }: { slug: string }) {
       code: code,
       language: selectedLanguage,
       gpuType: selectedGpuType,
+      profilingOptions,
     });
   }, [
     session?.user,
@@ -493,10 +590,12 @@ export default function ProblemPage({ slug }: { slug: string }) {
     code,
     selectedLanguage,
     selectedGpuType,
+    profilingOptions,
     processSubmission,
     startSubmission,
     setViewType,
     HORIZONTAL_DEFAULT_RATIO,
+    languageGpuError,
     toast,
   ]);
   const handleRun = useCallback(async () => {
@@ -512,6 +611,17 @@ export default function ProblemPage({ slug }: { slug: string }) {
       toast({
         title: "Not signed in",
         description: "Please sign in to run solutions",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (languageGpuError) {
+      toast({
+        title: "Unsupported GPU",
+        description: languageGpuError,
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -547,6 +657,7 @@ export default function ProblemPage({ slug }: { slug: string }) {
     slug,
     HORIZONTAL_DEFAULT_RATIO,
     LEFT_CONSOLE_DEFAULT_RATIO,
+    languageGpuError,
     toast,
   ]);
 
@@ -690,10 +801,8 @@ export default function ProblemPage({ slug }: { slug: string }) {
   );
 
   const gpuOptions = Object.entries(GPU_DISPLAY_NAMES).filter(
-    ([key]) =>
-      key !== "all" && (!allowedGpus?.length || allowedGpus.includes(key))
+    ([key]) => key !== "all" && baseGpuOptions.includes(key)
   );
-
   const editorToolbar = (
     <HStack
       h="38px"
@@ -739,27 +848,31 @@ export default function ProblemPage({ slug }: { slug: string }) {
                 minW="186px"
               >
                 {gpuOptions.map(([key, value]) => {
-                  const isDisabledForCutile =
-                    selectedLanguage === "cutile" && key !== "B200";
+                  const isDisabled = !isLanguageSupportedOnGpu(
+                    selectedLanguage,
+                    key
+                  );
+                  const disabledReason = getLanguageGpuSupportError(
+                    selectedLanguage,
+                    key
+                  );
                   return (
                     <Tooltip
                       key={key}
-                      label="cuTile requires B200"
-                      isDisabled={!isDisabledForCutile}
+                      label={disabledReason ?? ""}
+                      isDisabled={!isDisabled}
                       placement="right"
                     >
                       <MenuItem
                         onClick={() => setSelectedGpuType(key)}
                         bg="brand.secondary"
                         _hover={{
-                          bg: isDisabledForCutile
-                            ? "brand.secondary"
-                            : "gray.700",
+                          bg: isDisabled ? "brand.secondary" : "gray.700",
                         }}
-                        color={isDisabledForCutile ? "gray.500" : "white"}
+                        color={isDisabled ? "gray.500" : "white"}
                         borderRadius="md"
                         fontSize="sm"
-                        isDisabled={isDisabledForCutile}
+                        isDisabled={isDisabled}
                       >
                         {value}
                       </MenuItem>
@@ -820,6 +933,38 @@ export default function ProblemPage({ slug }: { slug: string }) {
                 >
                   Triton
                 </MenuItem>
+                <Tooltip
+                  label={
+                    getLanguageGpuSupportError("pyptx", selectedGpuType) ?? ""
+                  }
+                  isDisabled={isLanguageSupportedOnGpu(
+                    "pyptx",
+                    selectedGpuType
+                  )}
+                  placement="right"
+                >
+                  <MenuItem
+                    onClick={() => setSelectedLanguage("pyptx")}
+                    bg="brand.secondary"
+                    _hover={{
+                      bg: isLanguageSupportedOnGpu("pyptx", selectedGpuType)
+                        ? "gray.700"
+                        : "brand.secondary",
+                    }}
+                    color={
+                      isLanguageSupportedOnGpu("pyptx", selectedGpuType)
+                        ? "white"
+                        : "gray.500"
+                    }
+                    borderRadius="md"
+                    fontSize="sm"
+                    isDisabled={
+                      !isLanguageSupportedOnGpu("pyptx", selectedGpuType)
+                    }
+                  >
+                    PyPTX
+                  </MenuItem>
+                </Tooltip>
                 <MenuItem
                   onClick={() => setSelectedLanguage("mojo")}
                   bg="brand.secondary"
@@ -841,23 +986,33 @@ export default function ProblemPage({ slug }: { slug: string }) {
                   CuTe DSL
                 </MenuItem>
                 <Tooltip
-                  label="Only available on B200"
-                  isDisabled={selectedGpuType === "B200"}
+                  label={
+                    getLanguageGpuSupportError("cutile", selectedGpuType) ?? ""
+                  }
+                  isDisabled={isLanguageSupportedOnGpu(
+                    "cutile",
+                    selectedGpuType
+                  )}
                   placement="right"
                 >
                   <MenuItem
                     onClick={() => setSelectedLanguage("cutile")}
                     bg="brand.secondary"
                     _hover={{
-                      bg:
-                        selectedGpuType === "B200"
-                          ? "gray.700"
-                          : "brand.secondary",
+                      bg: isLanguageSupportedOnGpu("cutile", selectedGpuType)
+                        ? "gray.700"
+                        : "brand.secondary",
                     }}
-                    color={selectedGpuType === "B200" ? "white" : "gray.500"}
+                    color={
+                      isLanguageSupportedOnGpu("cutile", selectedGpuType)
+                        ? "white"
+                        : "gray.500"
+                    }
                     borderRadius="md"
                     fontSize="sm"
-                    isDisabled={selectedGpuType !== "B200"}
+                    isDisabled={
+                      !isLanguageSupportedOnGpu("cutile", selectedGpuType)
+                    }
                   >
                     cuTile Python
                   </MenuItem>
@@ -866,6 +1021,8 @@ export default function ProblemPage({ slug }: { slug: string }) {
             </Menu>
             <LanguageInfoModal compact />
           </HStack>
+
+          <LanguageResources language={selectedLanguage} />
 
           <Tooltip
             label={
@@ -918,6 +1075,251 @@ export default function ProblemPage({ slug }: { slug: string }) {
               }}
             />
           </Tooltip>
+
+          {session?.user?.canUseProfiler && (
+            <Popover placement="bottom-start">
+              <PopoverTrigger>
+                <IconButton
+                  aria-label="Advanced profiling"
+                  icon={<FiSliders size={14} />}
+                  size="sm"
+                  variant="ghost"
+                  borderRadius="lg"
+                  h="30px"
+                  minW="30px"
+                  color={isAdvancedProfilingEnabled ? "blue.300" : "gray.400"}
+                  bg={isAdvancedProfilingEnabled ? "whiteAlpha.100" : undefined}
+                  _hover={{
+                    color: "white",
+                  }}
+                />
+              </PopoverTrigger>
+              <PopoverContent
+                bg="brand.secondary"
+                borderColor="gray.800"
+                color="white"
+                w="276px"
+                _focus={{ boxShadow: "none" }}
+              >
+                <PopoverArrow bg="brand.secondary" />
+                <PopoverBody p={3}>
+                  <VStack align="stretch" spacing={3}>
+                    <FormControl
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                    >
+                      <FormLabel mb={0} fontSize="sm">
+                        Advanced profiling
+                      </FormLabel>
+                      <Switch
+                        size="sm"
+                        isChecked={isAdvancedProfilingEnabled}
+                        onChange={(event) =>
+                          setIsAdvancedProfilingEnabled(event.target.checked)
+                        }
+                      />
+                    </FormControl>
+
+                    <HStack spacing={2}>
+                      <FormControl>
+                        <FormLabel fontSize="xs" color="gray.300">
+                          Min runs
+                        </FormLabel>
+                        <NumberInput
+                          size="sm"
+                          min={1}
+                          max={50}
+                          value={profileMinIterations}
+                          onChange={(_, value) =>
+                            setProfileMinIterations(
+                              Number.isFinite(value) ? value : 5
+                            )
+                          }
+                          isDisabled={!isAdvancedProfilingEnabled}
+                        >
+                          <NumberInputField />
+                          <NumberInputStepper>
+                            <NumberIncrementStepper />
+                            <NumberDecrementStepper />
+                          </NumberInputStepper>
+                        </NumberInput>
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel fontSize="xs" color="gray.300">
+                          Max runs
+                        </FormLabel>
+                        <NumberInput
+                          size="sm"
+                          min={1}
+                          max={200}
+                          value={profileMaxIterations}
+                          onChange={(_, value) =>
+                            setProfileMaxIterations(
+                              Number.isFinite(value) ? value : 20
+                            )
+                          }
+                          isDisabled={!isAdvancedProfilingEnabled}
+                        >
+                          <NumberInputField />
+                          <NumberInputStepper>
+                            <NumberIncrementStepper />
+                            <NumberDecrementStepper />
+                          </NumberInputStepper>
+                        </NumberInput>
+                      </FormControl>
+                    </HStack>
+
+                    <HStack spacing={2}>
+                      <FormControl>
+                        <FormLabel fontSize="xs" color="gray.300">
+                          Target CV %
+                        </FormLabel>
+                        <NumberInput
+                          size="sm"
+                          min={0.1}
+                          max={25}
+                          precision={1}
+                          step={0.1}
+                          value={profileTargetCvPercent}
+                          onChange={(_, value) =>
+                            setProfileTargetCvPercent(
+                              Number.isFinite(value) ? value : 1
+                            )
+                          }
+                          isDisabled={!isAdvancedProfilingEnabled}
+                        >
+                          <NumberInputField />
+                          <NumberInputStepper>
+                            <NumberIncrementStepper />
+                            <NumberDecrementStepper />
+                          </NumberInputStepper>
+                        </NumberInput>
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel fontSize="xs" color="gray.300">
+                          Sample ms
+                        </FormLabel>
+                        <NumberInput
+                          size="sm"
+                          min={1}
+                          max={1000}
+                          value={profileSampleIntervalMs}
+                          onChange={(_, value) =>
+                            setProfileSampleIntervalMs(
+                              Number.isFinite(value) ? value : 5
+                            )
+                          }
+                          isDisabled={!isAdvancedProfilingEnabled}
+                        >
+                          <NumberInputField />
+                          <NumberInputStepper>
+                            <NumberIncrementStepper />
+                            <NumberDecrementStepper />
+                          </NumberInputStepper>
+                        </NumberInput>
+                      </FormControl>
+                    </HStack>
+
+                    <FormControl>
+                      <FormLabel fontSize="xs" color="gray.300">
+                        Long-kernel threshold seconds
+                      </FormLabel>
+                      <NumberInput
+                        size="sm"
+                        min={0.01}
+                        max={30}
+                        precision={2}
+                        step={0.1}
+                        value={profileLongKernelThreshold}
+                        onChange={(_, value) =>
+                          setProfileLongKernelThreshold(
+                            Number.isFinite(value) ? value : 1
+                          )
+                        }
+                        isDisabled={!isAdvancedProfilingEnabled}
+                      >
+                        <NumberInputField />
+                        <NumberInputStepper>
+                          <NumberIncrementStepper />
+                          <NumberDecrementStepper />
+                        </NumberInputStepper>
+                      </NumberInput>
+                    </FormControl>
+
+                    <FormControl
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                    >
+                      <FormLabel mb={0} fontSize="xs" color="gray.300">
+                        Store raw NVML samples
+                      </FormLabel>
+                      <Switch
+                        size="sm"
+                        isChecked={profileIncludeRawSamples}
+                        onChange={(event) =>
+                          setProfileIncludeRawSamples(event.target.checked)
+                        }
+                        isDisabled={!isAdvancedProfilingEnabled}
+                      />
+                    </FormControl>
+
+                    <FormControl
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                    >
+                      <FormLabel mb={0} fontSize="xs" color="gray.300">
+                        CUDA kernel trace
+                      </FormLabel>
+                      <Switch
+                        size="sm"
+                        isChecked={profileIncludeCudaKernelProfile}
+                        onChange={(event) =>
+                          setProfileIncludeCudaKernelProfile(
+                            event.target.checked
+                          )
+                        }
+                        isDisabled={
+                          !isAdvancedProfilingEnabled ||
+                          selectedLanguage !== "cuda"
+                        }
+                      />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel fontSize="xs" color="gray.300">
+                        Kernel trace rows
+                      </FormLabel>
+                      <NumberInput
+                        size="sm"
+                        min={1}
+                        max={100}
+                        value={profileCudaKernelProfileTopK}
+                        onChange={(_, value) =>
+                          setProfileCudaKernelProfileTopK(
+                            Number.isFinite(value) ? value : 25
+                          )
+                        }
+                        isDisabled={
+                          !isAdvancedProfilingEnabled ||
+                          !profileIncludeCudaKernelProfile ||
+                          selectedLanguage !== "cuda"
+                        }
+                      >
+                        <NumberInputField />
+                        <NumberInputStepper>
+                          <NumberIncrementStepper />
+                          <NumberDecrementStepper />
+                        </NumberInputStepper>
+                      </NumberInput>
+                    </FormControl>
+                  </VStack>
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+          )}
         </HStack>
 
         <HStack spacing={1.5} flexShrink={0}>
@@ -1006,7 +1408,7 @@ export default function ProblemPage({ slug }: { slug: string }) {
           isLoading={isRunning}
           loadingText="Run"
           spinner={<></>}
-          disabled={isRunning}
+          disabled={isRunning || !!languageGpuError}
           borderRadius="lg"
           h="32px"
           fontSize="sm"
@@ -1040,7 +1442,7 @@ export default function ProblemPage({ slug }: { slug: string }) {
           isLoading={isSubmitting}
           loadingText="Submit"
           spinner={<></>}
-          disabled={isSubmitting}
+          disabled={isSubmitting || !!languageGpuError}
           borderRadius="lg"
           h="32px"
           fontSize="sm"

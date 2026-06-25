@@ -24,6 +24,7 @@ import {
   Icon,
   Tag,
   Image,
+  useToast,
 } from "@chakra-ui/react";
 import { useState, useEffect, useMemo } from "react";
 import { api } from "~/utils/api";
@@ -70,6 +71,10 @@ const LanguageLogo = ({ language }: { language: string | null }) => {
     python: {
       src: "/triton-logo.png",
       label: "Triton",
+    },
+    pyptx: {
+      src: "/pyptx-logo.png",
+      label: "PyPTX",
     },
     mojo: {
       emoji: "🔥",
@@ -188,11 +193,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
 const LeaderboardPage: NextPage<{ slug: string }> = ({ slug }) => {
   const router = useRouter();
+  const toast = useToast();
   const { data: session } = useSession();
   const [selectedGpu, setSelectedGpu] = useState<string>(
     (router.query.gpu as string) || "all"
   );
   const [showBaselines, setShowBaselines] = useState(false);
+  const [isRerunningTop, setIsRerunningTop] = useState(false);
 
   // Add this to get the current user data
   const currentUsername = session?.user?.username;
@@ -239,15 +246,18 @@ const LeaderboardPage: NextPage<{ slug: string }> = ({ slug }) => {
   }, [problemGpus, selectedGpu]);
 
   // Get leaderboard data from the new optimized endpoint
-  const { data: leaderboardEntries = [], isLoading: isLeaderboardLoading } =
-    api.submissions.getProblemLeaderboard.useQuery<ProblemLeaderboardEntry[]>(
-      { slug, gpuType: selectedGpu },
-      {
-        staleTime: 300000, // 5 minutes
-        refetchOnMount: false,
-        refetchOnWindowFocus: false,
-      }
-    );
+  const {
+    data: leaderboardEntries = [],
+    isLoading: isLeaderboardLoading,
+    refetch: refetchLeaderboard,
+  } = api.submissions.getProblemLeaderboard.useQuery<ProblemLeaderboardEntry[]>(
+    { slug, gpuType: selectedGpu },
+    {
+      staleTime: 300000, // 5 minutes
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+    }
+  );
 
   // Get baseline benchmarks data
   const { data: baselineBenchmarks } =
@@ -325,6 +335,44 @@ const LeaderboardPage: NextPage<{ slug: string }> = ({ slug }) => {
       return 0;
     });
   }, [baselineBenchmarks, leaderboardEntries, selectedGpu, showBaselines]);
+
+  const hasSubmissionEntries = leaderboardEntries.length > 0;
+
+  const handleRerunTop = async () => {
+    if (!hasSubmissionEntries) return;
+
+    setIsRerunningTop(true);
+    try {
+      const response = await fetch("/api/submissions/rerun-top", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ problemSlug: slug, gpuType: selectedGpu }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `Rerun failed with ${response.status}`);
+      }
+
+      await response.text();
+      await refetchLeaderboard();
+      toast({
+        title: "Top result rerun completed",
+        status: "success",
+        duration: 3500,
+      });
+    } catch (error) {
+      toast({
+        title: "Could not rerun top result",
+        description:
+          error instanceof Error ? error.message.slice(0, 180) : undefined,
+        status: "error",
+        duration: 5000,
+      });
+    } finally {
+      setIsRerunningTop(false);
+    }
+  };
 
   if (isProblemLoading || isLeaderboardLoading) {
     return (
@@ -407,6 +455,21 @@ const LeaderboardPage: NextPage<{ slug: string }> = ({ slug }) => {
                 onClick={() => setShowBaselines(!showBaselines)}
               >
                 {showBaselines ? "Hide Baselines" : "Show Baselines"}
+              </Button>
+              <Button
+                size="md"
+                bg="whiteAlpha.50"
+                _hover={{ bg: "whiteAlpha.100" }}
+                _active={{ bg: "whiteAlpha.150" }}
+                color="white"
+                fontWeight="normal"
+                borderRadius="md"
+                onClick={handleRerunTop}
+                isLoading={isRerunningTop}
+                loadingText="Rerunning"
+                isDisabled={!hasSubmissionEntries}
+              >
+                Rerun Top
               </Button>
               <Menu>
                 <MenuButton

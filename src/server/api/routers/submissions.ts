@@ -76,6 +76,11 @@ export const initializeLeaderboardCache = async () => {
   }
 };
 
+export const invalidateLeaderboardCaches = () => {
+  leaderboardCache.flushAll();
+  problemLeaderboardCache.flushAll();
+};
+
 export const submissionsRouter = createTRPCRouter({
   // all submissions (public or not) for the current user
   getAllUserSubmissions: protectedProcedure.query(async ({ ctx }) => {
@@ -83,7 +88,14 @@ export const submissionsRouter = createTRPCRouter({
       where: {
         userId: ctx.session.user.id,
       },
-      include: {
+      select: {
+        id: true,
+        createdAt: true,
+        status: true,
+        moderationStatus: true,
+        runtime: true,
+        language: true,
+        gpuType: true,
         user: {
           select: {
             username: true,
@@ -95,11 +107,6 @@ export const submissionsRouter = createTRPCRouter({
             slug: true,
           },
         },
-        testResults: {
-          include: {
-            runs: true,
-          },
-        },
       },
       orderBy: {
         createdAt: "desc",
@@ -109,11 +116,95 @@ export const submissionsRouter = createTRPCRouter({
     return submissions;
   }),
 
+  getProfileRunExport: publicProcedure
+    .input(z.object({ username: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const user = await ctx.db.user.findFirst({
+        where: { username: { equals: input.username, mode: "insensitive" } },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      const isOwner = ctx.session?.user?.id === user.id;
+
+      return ctx.db.submission.findMany({
+        where: {
+          userId: user.id,
+          ...(isOwner
+            ? {}
+            : {
+                status: "ACCEPTED",
+                moderationStatus: null,
+                isPublic: true,
+              }),
+        },
+        select: {
+          id: true,
+          createdAt: true,
+          status: true,
+          moderationStatus: true,
+          runtime: true,
+          gflops: true,
+          passedTests: true,
+          totalTests: true,
+          language: true,
+          gpuType: true,
+          isPublic: true,
+          user: {
+            select: {
+              username: true,
+            },
+          },
+          problem: {
+            select: {
+              title: true,
+              slug: true,
+            },
+          },
+          testResults: {
+            select: {
+              testId: true,
+              name: true,
+              avgRuntimeMs: true,
+              avgGflops: true,
+              runs: {
+                select: {
+                  id: true,
+                  runIndex: true,
+                  runtimeMs: true,
+                  gflops: true,
+                  gpuMetrics: true,
+                },
+                orderBy: {
+                  runIndex: "asc",
+                },
+              },
+            },
+            orderBy: {
+              testId: "asc",
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+    }),
+
   // all submissions (public or not)
   getLeaderboardSubmissions: publicProcedure.query(async ({ ctx }) => {
     const submissions = await ctx.db.submission.findMany({
       where: {
         status: "ACCEPTED",
+        moderationStatus: null,
       },
       include: {
         user: {
@@ -371,6 +462,7 @@ export const submissionsRouter = createTRPCRouter({
         where: {
           userId: ctx.session.user.id,
           status: "ACCEPTED",
+          moderationStatus: null,
         },
         include: {
           problem: {
@@ -388,6 +480,64 @@ export const submissionsRouter = createTRPCRouter({
 
       return submissions;
     }),
+
+  invalidateOwnSubmission: protectedProcedure
+    .input(
+      z.object({
+        submissionId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const submission = await ctx.db.submission.findUnique({
+        where: { id: input.submissionId },
+        select: {
+          id: true,
+          userId: true,
+          moderationStatus: true,
+          problem: {
+            select: {
+              slug: true,
+            },
+          },
+        },
+      });
+
+      if (!submission) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Submission not found",
+        });
+      }
+
+      if (submission.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only invalidate your own submissions",
+        });
+      }
+
+      if (submission.moderationStatus === "INVALIDATED") {
+        return submission;
+      }
+
+      const updatedSubmission = await ctx.db.submission.update({
+        where: { id: input.submissionId },
+        data: { moderationStatus: "INVALIDATED" },
+        include: {
+          problem: {
+            select: {
+              title: true,
+              slug: true,
+            },
+          },
+        },
+      });
+
+      leaderboardCache.flushAll();
+      problemLeaderboardCache.flushAll();
+
+      return updatedSubmission;
+    }),
 });
 
 async function computeLeaderboardData(
@@ -403,6 +553,7 @@ async function computeLeaderboardData(
       submissions: {
         where: {
           status: "ACCEPTED",
+          moderationStatus: null,
           OR: [{ gflops: { not: null } }, { runtime: { not: null } }],
           ...(gpuType !== "all" ? { gpuType } : {}),
         },
@@ -534,6 +685,7 @@ async function computeProblemLeaderboardData(
     where: {
       problem: { slug },
       status: "ACCEPTED",
+      moderationStatus: null,
       OR: [{ gflops: { not: null } }, { runtime: { not: null } }],
       ...(gpuType !== "all" ? { gpuType } : {}),
     },

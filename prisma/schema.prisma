@@ -12,6 +12,10 @@ model User {
   name                      String?
   username                  String?
   email                     String?             @unique
+  passwordHash              String?
+  isAdmin                   Boolean             @default(false)
+  isActive                  Boolean             @default(true)
+  canUseProfiler            Boolean             @default(false)
   emailVerified             DateTime?
   image                     String?
   createdAt                 DateTime            @default(now())
@@ -20,7 +24,7 @@ model User {
   lastLogin                 DateTime?
   lastLimitReset            DateTime?
   currentLimit              Int?
-  sampleSubmissionCount     Int                 @default(200)
+  sampleSubmissionCount     Int                 @default(999999)
   lastSampleSubmissionReset DateTime            @default(now())
   rating                    Int?
   rank                      Int?
@@ -39,7 +43,7 @@ model User {
   submissions               Submission[]
   workspaces                Workspace[]
   groupMemberships          GroupMember[]
-  groupProblemsAdded        GroupProblem[]  @relation("GroupProblemAddedBy")
+  groupProblemsAdded        GroupProblem[]      @relation("GroupProblemAddedBy")
 
   @@index([email])
   @@index([createdAt])
@@ -98,23 +102,23 @@ model RevokedToken {
 }
 
 model Problem {
-  id                 String       @id @default(cuid())
+  id                 String         @id @default(cuid())
   title              String
-  slug               String       @unique
+  slug               String         @unique
   description        String?
   difficulty         Difficulty
   author             String
-  parameters         Json         @default("[]")
+  parameters         Json           @default("[]")
   tags               String[]
-  gpus               String[]     @default([])
-  baselineBenchmarks Json?        @default("{}")
+  gpus               String[]       @default([])
+  baselineBenchmarks Json?          @default("{}")
   definition         String?
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
   userId             String?
   referenceSolution  String?
   getFlops           String?
-  User               User?        @relation(fields: [userId], references: [id])
+  User               User?          @relation(fields: [userId], references: [id])
   submissions        Submission[]
   groupProblems      GroupProblem[]
 
@@ -124,10 +128,11 @@ model Problem {
 }
 
 model Submission {
-  id               String               @id @default(cuid())
+  id               String                      @id @default(cuid())
   code             String
   language         String
   status           String?
+  moderationStatus SubmissionModerationStatus?
   runtime          Float?
   memory           Int?
   passedTests      Int?
@@ -136,19 +141,19 @@ model Submission {
   gpuType          String?
   timeMs           Float?
   memoryMB         Float?
-  verified         Boolean              @default(false)
+  verified         Boolean                     @default(false)
   gflops           Float?
   errorMessage     String?
   errorDetails     String?
   benchmarkResults Json?
   userId           String
   problemId        String
-  createdAt        DateTime             @default(now())
+  createdAt        DateTime                    @default(now())
   callId           String?
-  isPublic         Boolean              @default(false)
+  isPublic         Boolean                     @default(false)
   blogPosts        BlogPostSubmission[]
-  problem          Problem              @relation(fields: [problemId], references: [id])
-  user             User                 @relation(fields: [userId], references: [id])
+  problem          Problem                     @relation(fields: [problemId], references: [id])
+  user             User                        @relation(fields: [userId], references: [id])
   testResults      TestResult[]
 
   @@index([userId])
@@ -398,17 +403,22 @@ enum GroupRole {
   MEMBER
 }
 
+enum SubmissionModerationStatus {
+  SUSPICIOUS
+  INVALIDATED
+}
+
 model Group {
-  id          String         @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
-  slug        String         @unique
-  inviteCode  String?        @unique
+  slug        String  @unique
+  inviteCode  String? @unique
   description String?
 
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  members     GroupMember[]
-  problems    GroupProblem[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  members   GroupMember[]
+  problems  GroupProblem[]
 
   @@index([slug])
 }

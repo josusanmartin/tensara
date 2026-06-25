@@ -216,11 +216,42 @@ export const problemsRouter = createTRPCRouter({
               slug: true,
             },
           },
+          user: {
+            select: {
+              username: true,
+            },
+          },
+          testResults: {
+            select: {
+              testId: true,
+              name: true,
+              avgRuntimeMs: true,
+              avgGflops: true,
+              runs: {
+                select: {
+                  id: true,
+                  runIndex: true,
+                  runtimeMs: true,
+                  gflops: true,
+                  gpuMetrics: true,
+                },
+                orderBy: {
+                  runIndex: "asc",
+                },
+              },
+            },
+            orderBy: {
+              testId: "asc",
+            },
+          },
         },
       })) as unknown as (SubmissionWithCustomFields & {
         problem: {
           title: string;
           slug: string;
+        };
+        user: {
+          username: string | null;
         };
       })[];
 

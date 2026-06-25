@@ -1,7 +1,8 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { env } from "~/env";
+import { engineAuthHeaders } from "~/server/engine-auth";
+import { getLanguageGpuSupportError } from "~/constants/language";
 import { combinedAuth } from "~/server/auth";
-import { checkRateLimit } from "~/hooks/useRateLimit";
 import {
   isSubmissionError,
   SubmissionError,
@@ -10,9 +11,13 @@ import {
 import type {
   BenchmarkedResponse,
   BenchmarkResultResponse,
-  SubmissionErrorType,
 } from "~/types/submission";
 import { db } from "~/server/db";
+import {
+  canUserUseProfiler,
+  normalizeProfilingOptions,
+  type ProfilingOptions,
+} from "~/server/profiling";
 
 export default async function handler(
   req: NextApiRequest,
@@ -36,12 +41,26 @@ export default async function handler(
     return;
   }
 
-  const { problemSlug, code, language, gpuType } = req.body as {
-    problemSlug: string;
-    code: string;
-    language: string;
-    gpuType: string;
-  };
+  const { problemSlug, code, language, gpuType, profilingOptions } =
+    req.body as {
+      problemSlug: string;
+      code: string;
+      language: string;
+      gpuType: string;
+      profilingOptions?: ProfilingOptions;
+    };
+  const normalizedProfilingOptions =
+    normalizeProfilingOptions(profilingOptions);
+
+  if (
+    normalizedProfilingOptions &&
+    !(await canUserUseProfiler(session.user.id))
+  ) {
+    res
+      .status(403)
+      .json({ error: "Advanced profiling is not enabled for this account" });
+    return;
+  }
 
   const requiredFields = { problemSlug, code, language, gpuType };
   const missingFields = Object.entries(requiredFields).filter(
@@ -55,13 +74,9 @@ export default async function handler(
     return;
   }
 
-  const rateLimit = await checkRateLimit(session.user.id);
-  if (!rateLimit.allowed) {
-    res.status(rateLimit.statusCode ?? 429).json({
-      status: SubmissionError.RATE_LIMIT_EXCEEDED as SubmissionErrorType,
-      error: rateLimit.error,
-      details: rateLimit.error,
-    });
+  const languageGpuError = getLanguageGpuSupportError(language, gpuType);
+  if (languageGpuError) {
+    res.status(400).json({ error: languageGpuError });
     return;
   }
 
@@ -121,6 +136,7 @@ export default async function handler(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...engineAuthHeaders(),
         },
         body: JSON.stringify({
           solution_code: code,
@@ -128,6 +144,7 @@ export default async function handler(
           problem_def: problem.definition,
           gpu_type: gpuType,
           language: language,
+          profiling_options: normalizedProfilingOptions,
         }),
       }
     );

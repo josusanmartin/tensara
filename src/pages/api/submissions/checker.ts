@@ -1,7 +1,8 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { env } from "~/env";
+import { engineAuthHeaders } from "~/server/engine-auth";
+import { getLanguageGpuSupportError } from "~/constants/language";
 import { combinedAuth } from "~/server/auth";
-import { checkRateLimit } from "~/hooks/useRateLimit";
 
 import {
   isSubmissionError,
@@ -10,7 +11,6 @@ import {
 } from "~/types/submission";
 import type {
   CheckedResponse,
-  SubmissionErrorType,
   TestResult,
   TestResultResponse,
   WrongAnswerResponse,
@@ -58,13 +58,9 @@ export default async function handler(
     return;
   }
 
-  const rateLimit = await checkRateLimit(session.user.id);
-  if (!rateLimit.allowed) {
-    res.status(rateLimit.statusCode ?? 429).json({
-      status: SubmissionError.RATE_LIMIT_EXCEEDED as SubmissionErrorType,
-      error: rateLimit.error,
-      details: rateLimit.error,
-    });
+  const languageGpuError = getLanguageGpuSupportError(language, gpuType);
+  if (languageGpuError) {
+    res.status(400).json({ error: languageGpuError });
     return;
   }
 
@@ -129,6 +125,7 @@ export default async function handler(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...engineAuthHeaders(),
         },
         body: JSON.stringify({
           solution_code: code,
