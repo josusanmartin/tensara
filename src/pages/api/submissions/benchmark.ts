@@ -2,6 +2,7 @@ import { type NextApiRequest, type NextApiResponse } from "next";
 import { env } from "~/env";
 import { engineAuthHeaders } from "~/server/engine-auth";
 import { getLanguageGpuSupportError } from "~/constants/language";
+import { SINGLE_GPU_TYPE } from "~/constants/gpu";
 import { combinedAuth } from "~/server/auth";
 import {
   isSubmissionError,
@@ -41,14 +42,14 @@ export default async function handler(
     return;
   }
 
-  const { problemSlug, code, language, gpuType, profilingOptions } =
-    req.body as {
-      problemSlug: string;
-      code: string;
-      language: string;
-      gpuType: string;
-      profilingOptions?: ProfilingOptions;
-    };
+  const { problemSlug, code, language, profilingOptions } = req.body as {
+    problemSlug: string;
+    code: string;
+    language: string;
+    gpuType?: string;
+    profilingOptions?: ProfilingOptions;
+  };
+  const gpuType = SINGLE_GPU_TYPE;
   const normalizedProfilingOptions =
     normalizeProfilingOptions(profilingOptions);
 
@@ -62,7 +63,7 @@ export default async function handler(
     return;
   }
 
-  const requiredFields = { problemSlug, code, language, gpuType };
+  const requiredFields = { problemSlug, code, language };
   const missingFields = Object.entries(requiredFields).filter(
     ([_, value]) => value === undefined
   );
@@ -131,7 +132,7 @@ export default async function handler(
 
   try {
     const benchmarkResponse = await fetch(
-      env.MODAL_ENDPOINT + "/benchmark_cli-" + (gpuType ?? "T4"),
+      env.MODAL_ENDPOINT + "/benchmark_cli-" + gpuType,
       {
         method: "POST",
         headers: {

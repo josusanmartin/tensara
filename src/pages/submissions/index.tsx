@@ -33,7 +33,7 @@ import { createInnerTRPCContext } from "~/server/api/trpc";
 import superjson from "superjson";
 import type { GetServerSideProps } from "next";
 import { auth } from "~/server/auth";
-import { GPU_DISPLAY_NAMES } from "~/constants/gpu";
+import { GPU_DISPLAY_NAMES, SINGLE_GPU_TYPE } from "~/constants/gpu";
 import { LANGUAGE_DISPLAY_NAMES } from "~/constants/language";
 import { formatStatus, getStatusColor } from "~/constants/problem";
 import {
@@ -560,7 +560,7 @@ const SubmissionsPage: NextPage = () => {
                         cursor: "pointer",
                       }}
                     >
-                      {GPU_DISPLAY_NAMES[submission.gpuType ?? "T4"]}
+                      {GPU_DISPLAY_NAMES[submission.gpuType ?? SINGLE_GPU_TYPE]}
                     </Link>
                   </Td>
                   <Td borderBottom="1px solid" borderColor="whiteAlpha.100">

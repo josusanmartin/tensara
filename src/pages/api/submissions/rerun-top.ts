@@ -18,6 +18,7 @@ import type {
 } from "~/types/submission";
 import { proxyUpstreamSSE } from "./sseProxy";
 import { invalidateLeaderboardCaches } from "~/server/api/routers/submissions";
+import { SINGLE_GPU_TYPE } from "~/constants/gpu";
 
 export default async function handler(
   req: NextApiRequest,
@@ -29,12 +30,13 @@ export default async function handler(
     return;
   }
 
-  const { problemSlug, gpuType, rank, submissionId } = req.body as {
+  const { problemSlug, rank, submissionId } = req.body as {
     problemSlug?: string;
     gpuType?: string;
     rank?: number;
     submissionId?: string;
   };
+  const gpuType = SINGLE_GPU_TYPE;
 
   if (!problemSlug && !submissionId) {
     res.status(400).json({ error: "Missing required field: problemSlug" });
@@ -50,14 +52,14 @@ export default async function handler(
           moderationStatus: null,
           runtime: { not: null },
           ...(problemSlug ? { problem: { slug: problemSlug } } : {}),
-          ...(gpuType && gpuType !== "all" ? { gpuType } : {}),
+          gpuType,
         }
       : {
           status: SubmissionStatus.ACCEPTED,
           moderationStatus: null,
           runtime: { not: null },
           problem: { slug: problemSlug },
-          ...(gpuType && gpuType !== "all" ? { gpuType } : {}),
+          gpuType,
         },
     skip: submissionId ? 0 : targetRank - 1,
     take: 1,
@@ -74,7 +76,7 @@ export default async function handler(
 
   const languageGpuError = getLanguageGpuSupportError(
     topSubmission.language,
-    topSubmission.gpuType ?? "T4"
+    gpuType
   );
   if (languageGpuError) {
     res.status(400).json({ error: languageGpuError });
@@ -103,7 +105,7 @@ export default async function handler(
     data: {
       code: topSubmission.code,
       language: topSubmission.language,
-      gpuType: topSubmission.gpuType ?? "T4",
+      gpuType,
       status: SubmissionStatus.IN_QUEUE,
       problem: { connect: { id: topSubmission.problemId } },
       user: { connect: { id: topSubmission.userId } },
@@ -145,7 +147,7 @@ export default async function handler(
 
   const checkerResult = await proxyUpstreamSSE(
     res,
-    `${env.MODAL_ENDPOINT}/checker-${submission.gpuType ?? "t4"}`,
+    `${env.MODAL_ENDPOINT}/checker-${SINGLE_GPU_TYPE}`,
     payload,
     async (evt) => {
       const s = evt?.status as string | undefined;
@@ -242,7 +244,7 @@ export default async function handler(
 
   await proxyUpstreamSSE(
     res,
-    `${env.MODAL_ENDPOINT}/benchmark-${submission.gpuType ?? "t4"}`,
+    `${env.MODAL_ENDPOINT}/benchmark-${SINGLE_GPU_TYPE}`,
     payload,
     async (evt) => {
       const s = evt?.status as string | undefined;

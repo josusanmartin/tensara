@@ -21,19 +21,7 @@ import numpy as np
 JS_MAX_SAFE = 2**53 - 1
 
 GPU_COMPUTE_CAPABILITIES = {
-    "T4": "75",
-    "H100": "90a",
-    "H200": "90a",
-    "B200": "100a",
-    "A100-80GB": "80",
-    "A10G": "86",
-    "L40S": "89",
-    "L4": "89",
-    # Local workstation aliases. These are useful when serving the engine
-    # directly instead of routing execution through Modal GPU names.
-    "RTX4090": "89",
     "RTXA6000": "86",
-    "RTX3090": "86",
 }
 
 

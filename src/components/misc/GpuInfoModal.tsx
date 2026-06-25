@@ -29,7 +29,7 @@ import {
   CUDA_RUNTIME_VERSION,
   DEVICE_QUERY_GPU_MAP,
 } from "~/constants/deviceQuery";
-import { GPU_DISPLAY_NAMES } from "~/constants/gpu";
+import { GPU_DISPLAY_NAMES, SINGLE_GPU_TYPE } from "~/constants/gpu";
 
 interface GpuInfoModalProps {
   compact?: boolean;
@@ -336,7 +336,7 @@ export const GpuInfoModal = ({ compact = false }: GpuInfoModalProps) => {
           <ModalBody pb={8} px={8} overflowY="auto">
             <Tabs variant="line" colorScheme="green">
               <TabList borderBottomColor="whiteAlpha.200" mb={6}>
-                {Object.entries(DEVICE_QUERY_GPU_MAP).map(([key]) => (
+                {[SINGLE_GPU_TYPE].map((key) => (
                   <Tab
                     key={key}
                     color="gray.400"
@@ -355,7 +355,7 @@ export const GpuInfoModal = ({ compact = false }: GpuInfoModalProps) => {
                 ))}
               </TabList>
               <TabPanels>
-                {Object.keys(DEVICE_QUERY_GPU_MAP).map((key) => (
+                {[SINGLE_GPU_TYPE].map((key) => (
                   <TabPanel key={key} p={0}>
                     {renderGpuInfo(key)}
                   </TabPanel>

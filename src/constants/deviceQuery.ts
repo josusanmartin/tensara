@@ -48,6 +48,46 @@ export const TRITON_VERSION = "3.2.0";
 export const PYPTX_VERSION = "0.1.0";
 
 export const DEVICE_QUERY_GPU_MAP: Record<string, DeviceQueryGpu> = {
+  RTXA6000: {
+    name: "NVIDIA RTX A6000",
+    cudaCapability: {
+      major: 8,
+      minor: 6,
+    },
+    globalMemory: 51527024640, // bytes
+    multiprocessors: 84,
+    cudaCoresPerMP: 128,
+    totalCUDACores: 10752,
+    gpuMaxClockRate: 2100, // MHz
+    memoryClockRate: 8001, // MHz
+    memoryBusWidth: 384, // bits
+    l2CacheSize: 6291456, // bytes
+    textureDimensions: {
+      max1D: 131072,
+      max2D: [131072, 65536],
+      max3D: [16384, 16384, 16384],
+    },
+    layeredTextureDimensions: {
+      max1D: 32768,
+      layers1D: 2048,
+      max2D: [32768, 32768],
+      layers2D: 2048,
+    },
+    memory: {
+      constantMemory: 65536, // bytes
+      sharedMemoryPerBlock: 49152, // bytes
+      sharedMemoryPerMP: 102400, // bytes
+    },
+    registersPerBlock: 65536,
+    warpSize: 32,
+    threads: {
+      maxPerMP: 1536,
+      maxPerBlock: 1024,
+      maxBlockDim: [1024, 1024, 64],
+      maxGridDim: [2147483647, 65535, 65535],
+    },
+    textureAlignment: 512, // bytes
+  },
   T4: {
     name: "Tesla T4",
     cudaCapability: {

@@ -21,12 +21,9 @@ import { db } from "~/server/db";
 import { env } from "~/env";
 import { engineAuthHeaders } from "~/server/engine-auth";
 import { getLanguageGpuSupportError } from "~/constants/language";
+import { SINGLE_GPU_TYPE } from "~/constants/gpu";
 import { combinedAuth } from "~/server/auth";
-import {
-  isSubmissionError,
-  SubmissionError,
-  SubmissionStatus,
-} from "~/types/submission";
+import { isSubmissionError, SubmissionStatus } from "~/types/submission";
 import type {
   BenchmarkResultResponse,
   BenchmarkRunData,
@@ -60,14 +57,14 @@ export default async function handler(
     return;
   }
 
-  const { problemSlug, code, language, gpuType, profilingOptions } =
-    req.body as {
-      problemSlug: string;
-      code: string;
-      language: string;
-      gpuType: string;
-      profilingOptions?: ProfilingOptions;
-    };
+  const { problemSlug, code, language, profilingOptions } = req.body as {
+    problemSlug: string;
+    code: string;
+    language: string;
+    gpuType?: string;
+    profilingOptions?: ProfilingOptions;
+  };
+  const gpuType = SINGLE_GPU_TYPE;
   const normalizedProfilingOptions =
     normalizeProfilingOptions(profilingOptions);
 
@@ -81,7 +78,7 @@ export default async function handler(
     return;
   }
 
-  const missing = Object.entries({ problemSlug, code, language, gpuType })
+  const missing = Object.entries({ problemSlug, code, language })
     .filter(([, v]) => v === undefined)
     .map(([k]) => k);
   if (missing.length) {
@@ -158,7 +155,7 @@ export default async function handler(
     data: {
       code,
       language,
-      gpuType: gpuType || "T4",
+      gpuType,
       status: SubmissionStatus.IN_QUEUE,
       problem: { connect: { id: problem.id } },
       user: { connect: { id: session.user.id } },
@@ -198,7 +195,7 @@ export default async function handler(
 
   const checkerResult = await proxyUpstreamSSE(
     res,
-    `${env.MODAL_ENDPOINT}/checker-${submission.gpuType ?? "t4"}`,
+    `${env.MODAL_ENDPOINT}/checker-${SINGLE_GPU_TYPE}`,
     payload,
     async (evt: import("~/types/submission").SubmissionResponse) => {
       const s = evt?.status as string | undefined;
@@ -305,7 +302,7 @@ export default async function handler(
 
   await proxyUpstreamSSE(
     res,
-    `${env.MODAL_ENDPOINT}/benchmark-${submission.gpuType ?? "t4"}`,
+    `${env.MODAL_ENDPOINT}/benchmark-${SINGLE_GPU_TYPE}`,
     payload,
     async (evt: import("~/types/submission").SubmissionResponse) => {
       const s = evt?.status as string | undefined;

@@ -162,7 +162,7 @@ export const LanguageInfoModal = ({
                       Supported GPUs
                     </Td>
                     <Td color="white" textAlign="left">
-                      H100, H200, B200
+                      Not available on the local RTX A6000 deployment
                     </Td>
                   </Tr>
                 </Tbody>

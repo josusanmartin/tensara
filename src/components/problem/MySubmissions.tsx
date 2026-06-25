@@ -17,7 +17,7 @@ import {
   useToast,
 } from "@chakra-ui/react";
 import { FiArrowLeft, FiDownload, FiFilter } from "react-icons/fi";
-import { GPU_DISPLAY_ON_PROFILE } from "~/constants/gpu";
+import { GPU_DISPLAY_ON_PROFILE, SINGLE_GPU_TYPE } from "~/constants/gpu";
 import {
   formatStatus,
   getStatusColor,
@@ -296,7 +296,7 @@ const MySubmissions = ({
                       {
                         GPU_DISPLAY_ON_PROFILE[
                           (submission.gpuType ??
-                            "T4") as keyof typeof GPU_DISPLAY_ON_PROFILE
+                            SINGLE_GPU_TYPE) as keyof typeof GPU_DISPLAY_ON_PROFILE
                         ]
                       }
                     </Text>

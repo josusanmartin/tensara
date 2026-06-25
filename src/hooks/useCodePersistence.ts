@@ -19,9 +19,6 @@ export function useCodePersistence(
   const [code, setCode] = useState<string>("");
   const [selectedLanguage, setSelectedLanguage] =
     useState<ProgrammingLanguage>(initialLanguage);
-  const [savedGpuType, setSavedGpuType] = useState<string | undefined>(
-    undefined
-  );
   const [isCodeDirty, setIsCodeDirty] = useState<boolean>(false);
   const [starterCode, setStarterCode] = useState<string>("");
   const [hasSetInitialCode, setHasSetInitialCode] = useState<boolean>(false);
@@ -35,9 +32,6 @@ export function useCodePersistence(
       if (savedPreferences) {
         if (savedPreferences.language) {
           setSelectedLanguage(savedPreferences.language as ProgrammingLanguage);
-        }
-        if (savedPreferences.gpuType) {
-          setSavedGpuType(savedPreferences.gpuType);
         }
       }
       setHasLoadedPreferences(true);
@@ -112,7 +106,6 @@ export function useCodePersistence(
     isCodeDirty,
     handleReset,
     starterCode,
-    savedGpuType,
     hasLoadedPreferences,
   };
 }

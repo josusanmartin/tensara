@@ -2,6 +2,7 @@ import { type NextApiRequest, type NextApiResponse } from "next";
 import { env } from "~/env";
 import { engineAuthHeaders } from "~/server/engine-auth";
 import { getLanguageGpuSupportError } from "~/constants/language";
+import { SINGLE_GPU_TYPE } from "~/constants/gpu";
 import { combinedAuth } from "~/server/auth";
 
 import {
@@ -39,14 +40,15 @@ export default async function handler(
     return;
   }
 
-  const { problemSlug, code, language, gpuType } = req.body as {
+  const { problemSlug, code, language } = req.body as {
     problemSlug: string;
     code: string;
     language: string;
-    gpuType: string;
+    gpuType?: string;
   };
+  const gpuType = SINGLE_GPU_TYPE;
 
-  const requiredFields = { problemSlug, code, language, gpuType };
+  const requiredFields = { problemSlug, code, language };
   const missingFields = Object.entries(requiredFields).filter(
     ([_, value]) => value === undefined
   );
@@ -120,7 +122,7 @@ export default async function handler(
 
     console.log("Starting checker process");
     const checkerResponse = await fetch(
-      env.MODAL_ENDPOINT + "/checker-" + (gpuType ?? "t4"),
+      env.MODAL_ENDPOINT + "/checker-" + gpuType,
       {
         method: "POST",
         headers: {

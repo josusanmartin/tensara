@@ -902,7 +902,7 @@ export default function Sandbox({
                   bg="whiteAlpha.50"
                   borderRadius="md"
                 >
-                  {GPU_DISPLAY_NAMES.T4}
+                  {GPU_DISPLAY_NAMES.RTXA6000}
                 </Text>
                 <Tooltip
                   label="⌘ + ⏎"

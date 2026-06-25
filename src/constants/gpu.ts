@@ -1,44 +1,24 @@
+export const SINGLE_GPU_TYPE = "RTXA6000";
+export const SINGLE_GPU_DISPLAY_NAME = "NVIDIA RTX A6000";
+
 export const GPU_DISPLAY_NAMES: Record<string, string> = {
-  all: "All GPUs",
-  T4: "Tesla T4",
-  H100: "NVIDIA H100",
-  H200: "NVIDIA H200",
-  B200: "NVIDIA B200",
-  "A100-80GB": "NVIDIA A100",
-  A10G: "NVIDIA A10G",
-  L40S: "NVIDIA L40S",
-  L4: "NVIDIA L4",
-  RTX4090: "NVIDIA GeForce RTX 4090",
-  RTXA6000: "NVIDIA RTX A6000",
-  RTX3090: "NVIDIA GeForce RTX 3090",
+  all: SINGLE_GPU_DISPLAY_NAME,
+  [SINGLE_GPU_TYPE]: SINGLE_GPU_DISPLAY_NAME,
 } as const;
 
 export const gpuTypes = Object.keys(GPU_DISPLAY_NAMES);
 
-export const LOCAL_GPU_TYPES = ["RTX4090", "RTXA6000", "RTX3090"] as const;
+export const LOCAL_GPU_TYPES = [SINGLE_GPU_TYPE] as const;
 
-export function getAllowedGpuTypes(allowedGpus?: string[]): string[] {
-  const hostedGpus = allowedGpus?.length
-    ? allowedGpus
-    : Object.keys(GPU_DISPLAY_NAMES).filter((gpu) => gpu !== "all");
-  const isB200Only =
-    hostedGpus.length > 0 && hostedGpus.every((gpu) => gpu === "B200");
-  const localGpus = isB200Only ? [] : LOCAL_GPU_TYPES;
+export function normalizeGpuType(_gpuType?: string | null): string {
+  return SINGLE_GPU_TYPE;
+}
 
-  return Array.from(new Set([...hostedGpus, ...localGpus]));
+export function getAllowedGpuTypes(_allowedGpus?: string[]): string[] {
+  return [SINGLE_GPU_TYPE];
 }
 
 export const GPU_DISPLAY_ON_PROFILE = {
-  T4: "T4",
-  H100: "H100",
-  H200: "H200",
-  B200: "B200",
-  "A100-80GB": "A100",
-  A10G: "A10G",
-  L40S: "L40S",
-  L4: "L4",
-  RTX4090: "RTX 4090",
   RTXA6000: "RTX A6000",
-  RTX3090: "RTX 3090",
   none: "N/A",
 } as const;

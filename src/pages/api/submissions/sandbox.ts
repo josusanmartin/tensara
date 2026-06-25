@@ -7,6 +7,7 @@ import { type ProgrammingLanguage } from "~/types/misc";
 import { SubmissionError, SubmissionStatus } from "~/types/submission";
 import type { SubmissionErrorType } from "~/types/submission";
 import { isSubmissionError } from "~/types/submission";
+import { SINGLE_GPU_TYPE } from "~/constants/gpu";
 
 export default async function handler(
   req: NextApiRequest,
@@ -123,18 +124,21 @@ export default async function handler(
 
     console.log("Starting sandbox process");
     const upstreamController = new AbortController();
-    const sandboxResponse = await fetch(env.MODAL_ENDPOINT + "/sandbox-T4", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...engineAuthHeaders(),
-      },
-      body: JSON.stringify({
-        code: submission.code,
-        language: submission.language,
-      }),
-      signal: upstreamController.signal,
-    });
+    const sandboxResponse = await fetch(
+      env.MODAL_ENDPOINT + "/sandbox-" + SINGLE_GPU_TYPE,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...engineAuthHeaders(),
+        },
+        body: JSON.stringify({
+          code: submission.code,
+          language: submission.language,
+        }),
+        signal: upstreamController.signal,
+      }
+    );
 
     if (!sandboxResponse.ok) {
       const errorText = await sandboxResponse.text();

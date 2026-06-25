@@ -12,6 +12,7 @@ import { type NextApiRequest, type NextApiResponse } from "next";
 import { env } from "~/env";
 import { engineAuthHeaders } from "~/server/engine-auth";
 import { getLanguageGpuSupportError } from "~/constants/language";
+import { SINGLE_GPU_TYPE } from "~/constants/gpu";
 import { combinedAuth } from "~/server/auth";
 import { db } from "~/server/db";
 import { proxyUpstreamSSE } from "./sseProxy";
@@ -35,14 +36,15 @@ export default async function handler(
     return;
   }
 
-  const { problemSlug, code, language, gpuType } = req.body as {
+  const { problemSlug, code, language } = req.body as {
     problemSlug?: string;
     code?: string;
     language?: string;
     gpuType?: string;
   };
+  const gpuType = SINGLE_GPU_TYPE;
 
-  const missing = Object.entries({ problemSlug, code, language, gpuType })
+  const missing = Object.entries({ problemSlug, code, language })
     .filter(([, v]) => !v)
     .map(([k]) => k);
   if (missing.length) {

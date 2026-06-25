@@ -17,8 +17,8 @@ https://github.com/user-attachments/assets/96457139-2a27-493c-8352-df5ceb298369
 
 ## Features 
 - **Problems**: Solve 60+ challenges in CUDA, Triton, and Mojo across multiple difficulty levels. 
-- **Benchmarking**: Run your solutions on actual GPUs (T4, H100, A100, etc.) with precise performance measurement.
-- **Leaderboards**: Compare your performance against other developers on per-GPU rankings.
+- **Benchmarking**: Run your solutions on the local NVIDIA RTX A6000 with precise performance measurement.
+- **Leaderboards**: Compare your performance against other developers on the single local GPU ranking.
 - **Baseline Comparisons**: See how your optimized kernels stack up against PyTorch, Triton, and other framework implementations
 - **CLI Tool**: Submit and test solutions directly from your terminal with the Tensara CLI
 

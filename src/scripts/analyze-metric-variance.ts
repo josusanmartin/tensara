@@ -14,7 +14,7 @@ import { PrismaClient } from "@prisma/client";
 // @ts-expect-error - Prisma client instantiation
 const prisma = new PrismaClient();
 
-const GPU_TYPE = "H100"; // Standard GPU for analysis
+const GPU_TYPE = "RTXA6000"; // Local GPU for analysis
 
 interface ProblemStats {
   problemId: string;
@@ -81,7 +81,7 @@ function calculatePercentile(rank: number, total: number): number {
  * Analyze per-problem statistics
  */
 async function analyzePerProblemStats(): Promise<ProblemStats[]> {
-  // Get all problems with 10+ submissions on H100
+  // Get all problems with 10+ submissions on the local GPU
   const problems = await prisma.problem.findMany({
     where: {
       submissions: {
@@ -103,7 +103,7 @@ async function analyzePerProblemStats(): Promise<ProblemStats[]> {
   const problemStats: ProblemStats[] = [];
 
   for (const problem of problems) {
-    // Get all accepted submissions for this problem on H100
+    // Get all accepted submissions for this problem on the local GPU
     const submissions = await prisma.submission.findMany({
       where: {
         problemId: problem.id,
@@ -179,7 +179,7 @@ async function analyzeCrossUserConsistency(): Promise<{
   gflopsStdDevs: number[];
   runtimeStdDevs: number[];
 }> {
-  // Get users who solved 3+ problems on H100
+  // Get users who solved 3+ problems on the local GPU
   const users = await prisma.user.findMany({
     where: {
       submissions: {
@@ -202,7 +202,7 @@ async function analyzeCrossUserConsistency(): Promise<{
   const runtimeStdDevs: number[] = [];
 
   for (const user of users) {
-    // Get user's best submissions per problem on H100
+    // Get user's best submissions per problem on the local GPU
     const userSubmissions = await prisma.submission.groupBy({
       by: ["problemId"],
       _max: { gflops: true },
@@ -335,7 +335,7 @@ async function analyzeOutlierUser(
   const percentiles = userPercentiles.get(user.id);
   if (!percentiles || percentiles.length === 0) {
     console.log(
-      `No percentile data for ${username} (needs 3+ problems on H100).`
+      `No percentile data for ${username} (needs 3+ problems on ${GPU_TYPE}).`
     );
     return;
   }
@@ -460,7 +460,7 @@ async function main() {
     await analyzeCrossUserConsistency();
 
   if (gflopsStdDevs.length === 0) {
-    console.log("No users found with 3+ solved problems on H100.");
+    console.log(`No users found with 3+ solved problems on ${GPU_TYPE}.`);
   } else {
     const avgGflopsStdDev =
       gflopsStdDevs.reduce((a, b) => a + b, 0) / gflopsStdDevs.length;
@@ -484,7 +484,7 @@ async function main() {
   }
 
   // 3. Per-problem table
-  console.log("PER-PROBLEM STATISTICS (10+ submissions on H100)");
+  console.log(`PER-PROBLEM STATISTICS (10+ submissions on ${GPU_TYPE})`);
   console.log("-".repeat(60));
   console.log(
     "Problem".padEnd(25) +

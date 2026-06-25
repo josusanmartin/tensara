@@ -88,7 +88,11 @@ import Editor from "@monaco-editor/react";
 import { FlopsModal } from "~/components/misc/FlopsModal";
 import { GpuInfoModal } from "~/components/misc/GpuInfoModal";
 import { LanguageInfoModal } from "~/components/misc/LanguageInfoModal";
-import { getAllowedGpuTypes, GPU_DISPLAY_NAMES } from "~/constants/gpu";
+import {
+  getAllowedGpuTypes,
+  GPU_DISPLAY_NAMES,
+  SINGLE_GPU_TYPE,
+} from "~/constants/gpu";
 import {
   getLanguageGpuSupportError,
   isLanguageSupportedOnGpu,
@@ -202,11 +206,10 @@ export default function ProblemPage({ slug }: { slug: string }) {
     setSelectedLanguage,
     isCodeDirty,
     handleReset,
-    savedGpuType,
     hasLoadedPreferences,
   } = useCodePersistence(slug, problem as Problem);
 
-  const [selectedGpuType, setSelectedGpuType] = useState("T4");
+  const [selectedGpuType, setSelectedGpuType] = useState(SINGLE_GPU_TYPE);
   const [isVimModeEnabled, setIsVimModeEnabled] = useState(false);
   const [hasLoadedVimPreference, setHasLoadedVimPreference] = useState(false);
   const [isAdvancedProfilingEnabled, setIsAdvancedProfilingEnabled] =
@@ -273,20 +276,10 @@ export default function ProblemPage({ slug }: { slug: string }) {
     [selectedLanguage, selectedGpuType]
   );
 
-  // Update GPU type when saved preferences are loaded
+  // This local deployment has a single GPU. Ignore stale saved preferences and
+  // problem metadata copied from the hosted multi-GPU deployment.
   useEffect(() => {
-    if (savedGpuType) {
-      setSelectedGpuType(savedGpuType);
-    }
-  }, [savedGpuType]);
-
-  // If problem restricts GPUs and current selection isn't allowed, pick first allowed
-  useEffect(() => {
-    setSelectedGpuType((current) =>
-      baseGpuOptions.length === 0 || baseGpuOptions.includes(current)
-        ? current
-        : (baseGpuOptions[0] ?? current)
-    );
+    setSelectedGpuType(SINGLE_GPU_TYPE);
   }, [baseGpuOptions]);
 
   useEffect(() => {

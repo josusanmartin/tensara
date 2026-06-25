@@ -1,4 +1,4 @@
-import { GPU_DISPLAY_NAMES } from "./gpu";
+import { SINGLE_GPU_DISPLAY_NAME } from "./gpu";
 
 export type LanguageResource = {
   label: string;
@@ -68,7 +68,7 @@ export function getLanguageResources(language: string): LanguageResource[] {
   return LANGUAGE_RESOURCES[normalized] ?? [];
 }
 
-export const PYPTX_SUPPORTED_GPUS = ["H100", "H200", "B200"] as const;
+export const PYPTX_SUPPORTED_GPUS = [] as const;
 
 export function isLanguageSupportedOnGpu(
   language: string,
@@ -77,7 +77,7 @@ export function isLanguageSupportedOnGpu(
   const normalized = (language ?? "").toLowerCase();
 
   if (normalized === "cutile") {
-    return gpuType === "B200";
+    return false;
   }
 
   if (normalized === "pyptx") {
@@ -108,14 +108,11 @@ export function getLanguageGpuSupportError(
   }
 
   if (normalized === "cutile") {
-    return "cuTile Python submissions require the NVIDIA B200 GPU.";
+    return `cuTile Python is not available on this local ${SINGLE_GPU_DISPLAY_NAME} deployment.`;
   }
 
   if (normalized === "pyptx") {
-    const supported = PYPTX_SUPPORTED_GPUS.map(
-      (gpu) => GPU_DISPLAY_NAMES[gpu]
-    ).join(", ");
-    return `PyPTX submissions require one of: ${supported}.`;
+    return `PyPTX is not available on this local ${SINGLE_GPU_DISPLAY_NAME} deployment.`;
   }
 
   return `${LANGUAGE_DISPLAY_NAMES[normalized] ?? language} is not supported on ${gpuType ?? "this GPU"}.`;

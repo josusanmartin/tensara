@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
+import { SINGLE_GPU_TYPE } from "~/constants/gpu";
 
 // // Simulated evaluation delay
 // const EVAL_DELAY_MS = 1500;
@@ -143,7 +144,7 @@ export const problemsRouter = createTRPCRouter({
         problemSlug: z.string(),
         code: z.string(),
         language: z.enum(["cpp", "cuda", "python"]),
-        gpuType: z.string(),
+        gpuType: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -158,7 +159,7 @@ export const problemsRouter = createTRPCRouter({
           userId: ctx.session.user.id,
           problemId: problem.id,
           status: SubmissionStatus.CHECKING,
-          gpuType: input.gpuType,
+          gpuType: SINGLE_GPU_TYPE,
         },
       });
 
