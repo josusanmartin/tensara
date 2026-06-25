@@ -1,4 +1,4 @@
-from threading import Thread
+from threading import Lock, Thread
 import hmac
 import os
 from pathlib import Path
@@ -12,6 +12,7 @@ import utils
 
 
 web_app = FastAPI()
+GPU_EXECUTION_LOCK = Lock()
 
 
 def _read_env_token():
@@ -59,6 +60,16 @@ def gen_wrapper(gen):
         if event is None or event == {}:
             continue
         yield "data: " + simplejson.dumps(event, ignore_nan=True) + "\n\n"
+
+
+def gpu_serialized_stream(gen_factory):
+    yield {"status": "QUEUED"}
+    with GPU_EXECUTION_LOCK:
+        try:
+            runner._cleanup_gpu_memory()
+            yield from gen_factory()
+        finally:
+            runner._cleanup_gpu_memory()
 
 
 def _unsupported_gpu_response(gpu: str):
@@ -205,7 +216,9 @@ async def checker(gpu: str, request: Request):
             "checker", checker_compiled, solution_code, problem_name, problem_def, language
         )
 
-    return StreamingResponse(gen_wrapper(create_stream()), media_type="text/event-stream")
+    return StreamingResponse(
+        gen_wrapper(gpu_serialized_stream(create_stream)), media_type="text/event-stream"
+    )
 
 
 @web_app.post("/benchmark-{gpu}")
@@ -250,7 +263,9 @@ async def benchmark(gpu: str, request: Request):
             profiling_options=profiling_options,
         )
 
-    return StreamingResponse(gen_wrapper(create_stream()), media_type="text/event-stream")
+    return StreamingResponse(
+        gen_wrapper(gpu_serialized_stream(create_stream)), media_type="text/event-stream"
+    )
 
 
 @web_app.post("/sample-{gpu}")
@@ -290,7 +305,9 @@ async def sample_runner(gpu: str, request: Request):
             "sample", sample_compiled, solution_code, problem_name, problem_def, language
         )
 
-    return StreamingResponse(gen_wrapper(create_stream()), media_type="text/event-stream")
+    return StreamingResponse(
+        gen_wrapper(gpu_serialized_stream(create_stream)), media_type="text/event-stream"
+    )
 
 
 @web_app.post("/sandbox-{gpu}")
@@ -344,7 +361,9 @@ async def sandbox(gpu: str, request: Request):
                 return
             yield event
 
-    return StreamingResponse(gen_wrapper(create_stream()), media_type="text/event-stream")
+    return StreamingResponse(
+        gen_wrapper(gpu_serialized_stream(create_stream)), media_type="text/event-stream"
+    )
 
 
 @web_app.post("/benchmark_cli-{gpu}")
@@ -404,7 +423,9 @@ async def benchmark_cli(gpu: str, request: Request):
             profiling_options=profiling_options,
         )
 
-    return StreamingResponse(gen_wrapper(create_stream()), media_type="text/event-stream")
+    return StreamingResponse(
+        gen_wrapper(gpu_serialized_stream(create_stream)), media_type="text/event-stream"
+    )
 
 
 app = web_app

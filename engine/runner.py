@@ -22,7 +22,12 @@ MAX_SANDBOX_OUTPUT_BYTES = 64 * 1024  # Cap console streaming to 64 KiB for resp
 def _cleanup_gpu_memory():
     """Clean up GPU memory after test execution."""
     gc.collect()
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        try:
+            torch.cuda.ipc_collect()
+        except Exception:
+            pass
 
 
 def _cleanup_solution_temp_dir(language: str, solution_func):
