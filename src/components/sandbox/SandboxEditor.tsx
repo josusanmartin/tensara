@@ -28,7 +28,7 @@ import { type ProgrammingLanguage } from "~/types/misc";
 import CodeEditor from "~/components/problem/CodeEditor";
 import VerticalSplitPanel from "~/components/problem/VerticalSplitPanel";
 import { Menu, MenuButton, MenuList, MenuItem } from "@chakra-ui/react";
-import { GPU_DISPLAY_NAMES } from "~/constants/gpu";
+import { GPU_DISPLAY_NAMES, SINGLE_GPU_TYPE } from "~/constants/gpu";
 import { LANGUAGE_DISPLAY_NAMES } from "~/constants/language";
 import { useToast } from "@chakra-ui/react";
 import { useHotkey } from "~/hooks/useHotKey";
@@ -902,7 +902,7 @@ export default function Sandbox({
                   bg="whiteAlpha.50"
                   borderRadius="md"
                 >
-                  {GPU_DISPLAY_NAMES.RTXA6000}
+                  {GPU_DISPLAY_NAMES[SINGLE_GPU_TYPE]}
                 </Text>
                 <Tooltip
                   label="⌘ + ⏎"

@@ -1,0 +1,20 @@
+[Unit]
+Description=Tensara local web app
+After=network-online.target postgresql.service tensara-vast-tunnel.service
+Wants=network-online.target postgresql.service tensara-vast-tunnel.service
+
+[Service]
+Type=simple
+User=josu
+WorkingDirectory=/home/josu/dev/tensara
+Environment=HOME=/home/josu
+Environment=NODE_ENV=production
+EnvironmentFile=/home/josu/dev/tensara/.env
+ExecStart=/usr/bin/corepack pnpm start --hostname 127.0.0.1 --port 18080
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

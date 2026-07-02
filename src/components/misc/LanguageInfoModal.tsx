@@ -25,6 +25,7 @@ import {
   MOJO_CMD,
   PYPTX_VERSION,
 } from "~/constants/deviceQuery";
+import { SINGLE_GPU_DISPLAY_NAME } from "~/constants/gpu";
 
 interface LanguageInfoModalProps {
   compact?: boolean;
@@ -162,7 +163,8 @@ export const LanguageInfoModal = ({
                       Supported GPUs
                     </Td>
                     <Td color="white" textAlign="left">
-                      Not available on the local RTX A6000 deployment
+                      Not available on the local {SINGLE_GPU_DISPLAY_NAME}{" "}
+                      deployment
                     </Td>
                   </Tr>
                 </Tbody>

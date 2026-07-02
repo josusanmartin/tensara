@@ -47,6 +47,9 @@ declare module "next-auth/jwt" {
  */
 export const authConfig: NextAuthOptions = {
   adapter: PrismaAdapter(db),
+  pages: {
+    signIn: "/login",
+  },
   providers: [
     CredentialsProvider({
       name: "Username and password",

@@ -28,6 +28,7 @@ import { useRouter } from "next/router";
 import Link from "next/link";
 import { formatDistanceToNow, format } from "date-fns";
 import { GPU_DISPLAY_NAMES } from "~/constants/gpu";
+import { DEFAULT_AVATAR_SRC } from "~/constants/avatar";
 import { FaChevronDown } from "react-icons/fa";
 import { FiArrowLeft } from "react-icons/fi";
 
@@ -294,12 +295,12 @@ export default function GroupProblemLeaderboardPage() {
                         <Td borderBottom="none" py={3}>
                           <HStack spacing={3}>
                             <Image
-                              src={entry.image ?? ""}
+                              src={entry.image || DEFAULT_AVATAR_SRC}
                               alt={entry.username ?? ""}
                               w={7}
                               h={7}
                               borderRadius="full"
-                              fallbackSrc="https://via.placeholder.com/28"
+                              fallbackSrc={DEFAULT_AVATAR_SRC}
                             />
                             <Text
                               color={medalColor ?? "white"}

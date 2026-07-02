@@ -11,6 +11,7 @@ import {
   Skeleton,
 } from "@chakra-ui/react";
 import { FiCalendar, FiAward } from "react-icons/fi";
+import { DEFAULT_AVATAR_SRC } from "~/constants/avatar";
 
 // Helper function to get ordinal suffix for dates (1st, 2nd, 3rd, etc.)
 export function getOrdinalSuffix(day: number): string {
@@ -66,7 +67,7 @@ const UserHeaderBox: React.FC<UserHeaderBoxProps> = ({
           endColor="gray.800"
         >
           <Image
-            src={userData?.image ?? "https://via.placeholder.com/150"}
+            src={userData?.image || DEFAULT_AVATAR_SRC}
             alt={`${
               typeof username === "string" ? username : "User"
             }'s profile`}
@@ -77,6 +78,7 @@ const UserHeaderBox: React.FC<UserHeaderBoxProps> = ({
             mx="auto"
             boxShadow="lg"
             bg="gray.700"
+            fallbackSrc={DEFAULT_AVATAR_SRC}
           />
         </Skeleton>
 

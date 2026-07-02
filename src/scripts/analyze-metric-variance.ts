@@ -14,7 +14,7 @@ import { PrismaClient } from "@prisma/client";
 // @ts-expect-error - Prisma client instantiation
 const prisma = new PrismaClient();
 
-const GPU_TYPE = "RTXA6000"; // Local GPU for analysis
+const GPU_TYPE = process.env.NEXT_PUBLIC_TENSARA_GPU_TYPE ?? "RTX5090";
 
 interface ProblemStats {
   problemId: string;

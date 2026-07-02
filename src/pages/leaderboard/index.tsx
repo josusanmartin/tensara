@@ -43,6 +43,7 @@ import {
 import { useState } from "react";
 import { api } from "~/utils/api";
 import { Layout } from "~/components/layout";
+import { DEFAULT_AVATAR_SRC } from "~/constants/avatar";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { createServerSideHelpers } from "@trpc/react-query/server";
@@ -412,7 +413,7 @@ const LeaderboardPage: NextPage = () => {
                                 </Text>
                                 <Avatar
                                   size="sm"
-                                  src={user.image ?? ""}
+                                  src={user.image || DEFAULT_AVATAR_SRC}
                                   name={user.username ?? "Anonymous"}
                                   mr={2}
                                 />
@@ -528,7 +529,7 @@ const LeaderboardPage: NextPage = () => {
                                   <Flex align="center">
                                     <Avatar
                                       size="sm"
-                                      src={user.image ?? ""}
+                                      src={user.image || DEFAULT_AVATAR_SRC}
                                       name={user.username ?? "Anonymous"}
                                       mr={2}
                                     />

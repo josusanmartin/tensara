@@ -23,7 +23,11 @@ import { engineAuthHeaders } from "~/server/engine-auth";
 import { getLanguageGpuSupportError } from "~/constants/language";
 import { SINGLE_GPU_TYPE } from "~/constants/gpu";
 import { combinedAuth } from "~/server/auth";
-import { isSubmissionError, SubmissionStatus } from "~/types/submission";
+import {
+  isSubmissionError,
+  SubmissionError,
+  SubmissionStatus,
+} from "~/types/submission";
 import type {
   BenchmarkResultResponse,
   BenchmarkRunData,
@@ -192,93 +196,141 @@ export default async function handler(
   let passedTests = 0;
   let totalTests = 0;
   const seenTests = new Set<number>();
+  let benchmarkCompleted = false;
 
-  const checkerResult = await proxyUpstreamSSE(
-    res,
-    `${env.MODAL_ENDPOINT}/checker-${SINGLE_GPU_TYPE}`,
-    payload,
-    async (evt: import("~/types/submission").SubmissionResponse) => {
-      const s = evt?.status as string | undefined;
-      if (!s) return "CONTINUE";
+  const finishWithStreamError = async (phase: string, error: unknown) => {
+    const details =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
+    const message = `Engine stream disconnected during ${phase}`;
 
-      if (s === SubmissionStatus.TEST_RESULT) {
-        const r = evt as TestResultResponse;
-        const id = r.result?.test_id;
-        if (id !== undefined && !seenTests.has(id)) {
-          seenTests.add(id);
-          totalTests++;
-          if (r.result?.status === "PASSED") passedTests++;
+    await db.submission.update({
+      where: { id: submission.id },
+      data: {
+        status: SubmissionError.ERROR,
+        errorMessage: message,
+        errorDetails: details,
+        passedTests,
+        totalTests,
+      },
+    });
+
+    try {
+      res.write(
+        `event: ${SubmissionError.ERROR}\ndata: ${JSON.stringify({
+          status: SubmissionError.ERROR,
+          message,
+          details,
+        })}\n\n`
+      );
+    } catch {}
+    clearInterval(heartbeat);
+    try {
+      res.end();
+    } catch {}
+  };
+
+  let checkerResult: "DONE" | "STOPPED";
+  try {
+    checkerResult = await proxyUpstreamSSE(
+      res,
+      `${env.MODAL_ENDPOINT}/checker-${SINGLE_GPU_TYPE}`,
+      payload,
+      async (evt: import("~/types/submission").SubmissionResponse) => {
+        const s = evt?.status as string | undefined;
+        if (!s) return "CONTINUE";
+
+        if (s === SubmissionStatus.TEST_RESULT) {
+          const r = evt as TestResultResponse;
+          const id = r.result?.test_id;
+          if (id !== undefined && !seenTests.has(id)) {
+            seenTests.add(id);
+            totalTests++;
+            if (r.result?.status === "PASSED") passedTests++;
+            await db.submission.update({
+              where: { id: submission.id },
+              data: { passedTests, totalTests },
+            });
+          }
+          return "CONTINUE";
+        }
+
+        if (s === SubmissionStatus.CHECKED) {
+          const r = evt as CheckedResponse;
+          if (typeof r.total_tests === "number") totalTests = r.total_tests;
+          if (typeof r.passed_tests === "number") passedTests = r.passed_tests;
+          const checkerPassed = passedTests === totalTests && totalTests > 0;
+          if (checkerPassed) {
+            await db.submission.update({
+              where: { id: submission.id },
+              data: { passedTests, totalTests },
+            });
+            return "CONTINUE"; // proceed to benchmark
+          }
+          // If worker sends WRONG_ANSWER instead, we’ll catch it below.
+          return "CONTINUE";
+        }
+
+        if (s === SubmissionStatus.WRONG_ANSWER) {
+          const r = evt as WrongAnswerResponse;
+          const failed = r.test_results?.find(
+            (t: TestResult) => t.status === "FAILED"
+          );
           await db.submission.update({
             where: { id: submission.id },
-            data: { passedTests, totalTests },
+            data: {
+              status: SubmissionStatus.WRONG_ANSWER,
+              passedTests: r.passed_tests ?? passedTests,
+              totalTests: r.total_tests ?? totalTests,
+              errorMessage: failed
+                ? `Failed on test ${failed.test_id} (${failed.name})`
+                : "Wrong answer",
+              errorDetails: JSON.stringify(r.debug_info ?? {}),
+            },
           });
+          return "STOP";
         }
-        return "CONTINUE";
-      }
 
-      if (s === SubmissionStatus.CHECKED) {
-        const r = evt as CheckedResponse;
-        if (typeof r.total_tests === "number") totalTests = r.total_tests;
-        if (typeof r.passed_tests === "number") passedTests = r.passed_tests;
-        const checkerPassed = passedTests === totalTests && totalTests > 0;
-        if (checkerPassed) {
+        if (isSubmissionError(s)) {
+          // evt is a SubmissionResponse union — narrow to ErrorResponse-like shape
+          const err = evt as Partial<
+            import("~/types/submission").ErrorResponse
+          >;
           await db.submission.update({
             where: { id: submission.id },
-            data: { passedTests, totalTests },
+            data: {
+              status: s,
+              errorMessage: err.message ?? "Unknown error",
+              errorDetails: err.details ?? "",
+              passedTests,
+              totalTests,
+            },
           });
-          return "CONTINUE"; // proceed to benchmark
+          return "STOP";
         }
-        // If worker sends WRONG_ANSWER instead, we’ll catch it below.
+
         return "CONTINUE";
-      }
-
-      if (s === SubmissionStatus.WRONG_ANSWER) {
-        const r = evt as WrongAnswerResponse;
-        const failed = r.test_results?.find(
-          (t: TestResult) => t.status === "FAILED"
-        );
-        await db.submission.update({
-          where: { id: submission.id },
-          data: {
-            status: SubmissionStatus.WRONG_ANSWER,
-            passedTests: r.passed_tests ?? passedTests,
-            totalTests: r.total_tests ?? totalTests,
-            errorMessage: failed
-              ? `Failed on test ${failed.test_id} (${failed.name})`
-              : "Wrong answer",
-            errorDetails: JSON.stringify(r.debug_info ?? {}),
-          },
-        });
-        return "STOP";
-      }
-
-      if (isSubmissionError(s)) {
-        // evt is a SubmissionResponse union — narrow to ErrorResponse-like shape
-        const err = evt as Partial<import("~/types/submission").ErrorResponse>;
-        await db.submission.update({
-          where: { id: submission.id },
-          data: {
-            status: s,
-            errorMessage: err.message ?? "Unknown error",
-            errorDetails: err.details ?? "",
-            passedTests,
-            totalTests,
-          },
-        });
-        return "STOP";
-      }
-
-      return "CONTINUE";
-    },
-    controller.signal,
-    engineAuthHeaders()
-  );
+      },
+      controller.signal,
+      engineAuthHeaders()
+    );
+  } catch (error) {
+    await finishWithStreamError("checking", error);
+    return;
+  }
 
   if (checkerResult === "STOPPED") {
     clearInterval(heartbeat);
     try {
       res.end();
     } catch {}
+    return;
+  }
+
+  if (passedTests === 0 || totalTests === 0 || passedTests !== totalTests) {
+    await finishWithStreamError(
+      "checking",
+      new Error("Checker stream ended before producing a final result")
+    );
     return;
   }
 
@@ -300,123 +352,140 @@ export default async function handler(
   // -------------------------------
   const benchResults: BenchmarkResultResponse["result"][] = [];
 
-  await proxyUpstreamSSE(
-    res,
-    `${env.MODAL_ENDPOINT}/benchmark-${SINGLE_GPU_TYPE}`,
-    payload,
-    async (evt: import("~/types/submission").SubmissionResponse) => {
-      const s = evt?.status as string | undefined;
-      if (!s) return "CONTINUE";
+  let benchmarkResult: "DONE" | "STOPPED";
+  try {
+    benchmarkResult = await proxyUpstreamSSE(
+      res,
+      `${env.MODAL_ENDPOINT}/benchmark-${SINGLE_GPU_TYPE}`,
+      payload,
+      async (evt: import("~/types/submission").SubmissionResponse) => {
+        const s = evt?.status as string | undefined;
+        if (!s) return "CONTINUE";
 
-      if (s === SubmissionStatus.BENCHMARK_RESULT) {
-        const r = evt as import("~/types/submission").BenchmarkResultResponse;
-        if (r.result) {
-          benchResults.push(r.result);
+        if (s === SubmissionStatus.BENCHMARK_RESULT) {
+          const r = evt as import("~/types/submission").BenchmarkResultResponse;
+          if (r.result) {
+            benchResults.push(r.result);
+            await db.submission.update({
+              where: { id: submission.id },
+              data: {
+                benchmarkResults:
+                  benchResults as unknown as Prisma.InputJsonValue,
+              },
+            });
+
+            // Store detailed test result with per-run GPU metrics
+            const testResult = r.result;
+            const runs = testResult.runs ?? [];
+
+            if (runs.length > 0) {
+              await db.testResult.create({
+                data: {
+                  submissionId: submission.id,
+                  testId: testResult.test_id,
+                  name: testResult.name,
+                  avgRuntimeMs: testResult.runtime_ms,
+                  avgGflops: testResult.gflops ?? null,
+                  runs: {
+                    create: runs.map((run: BenchmarkRunData) => ({
+                      runIndex: run.run_index,
+                      runtimeMs: run.runtime_ms,
+                      gflops: run.gflops ?? null,
+                      gpuSamples: (run.gpu_samples ??
+                        []) as unknown as Prisma.InputJsonValue,
+                      gpuMetrics: (run.gpu_metrics ??
+                        null) as unknown as Prisma.InputJsonValue,
+                    })),
+                  },
+                },
+              });
+            }
+          }
+          return "CONTINUE";
+        }
+
+        if (s === SubmissionStatus.BENCHMARKED) {
+          const r = evt as import("~/types/submission").BenchmarkedResponse;
+          benchmarkCompleted = true;
+          // Worker may or may not emit ACCEPTED. Persist final numbers here.
+          const updateData: Partial<Record<string, unknown>> & {
+            status: SubmissionStatusType;
+          } = {
+            status: SubmissionStatus.ACCEPTED,
+            benchmarkResults: benchResults as unknown as Prisma.InputJsonValue,
+          };
+          if (typeof r.avg_runtime_ms === "number")
+            (updateData as Record<string, unknown>).runtime = r.avg_runtime_ms;
+          if (typeof r.avg_gflops === "number")
+            (updateData as Record<string, unknown>).gflops = r.avg_gflops;
+
+          await db.submission.update({
+            where: { id: submission.id },
+            data: updateData,
+          });
+
+          // If your worker does NOT emit ACCEPTED, you can also emit it here:
+          res.write(
+            `event: ${SubmissionStatus.ACCEPTED}\ndata: ${JSON.stringify({
+              avg_runtime_ms: r.avg_runtime_ms,
+              avg_gflops: r.avg_gflops,
+              benchmark_results: benchResults,
+              total_tests: benchResults.length,
+            })}\n\n`
+          );
+
+          return "CONTINUE";
+        }
+
+        if (s === SubmissionStatus.WRONG_ANSWER) {
+          const err = evt as WrongAnswerResponse;
+          console.log("WRONG_ANSWER from benchmark", err);
           await db.submission.update({
             where: { id: submission.id },
             data: {
-              benchmarkResults:
-                benchResults as unknown as Prisma.InputJsonValue,
+              status: SubmissionStatus.WRONG_ANSWER,
+              errorMessage:
+                err.debug_info?.message ?? "Failed benchmarking checksum",
+              passedTests,
+              totalTests: err.total_tests ?? totalTests,
+              errorDetails: JSON.stringify(err.debug_info ?? {}),
             },
           });
-
-          // Store detailed test result with per-run GPU metrics
-          const testResult = r.result;
-          const runs = testResult.runs ?? [];
-
-          if (runs.length > 0) {
-            await db.testResult.create({
-              data: {
-                submissionId: submission.id,
-                testId: testResult.test_id,
-                name: testResult.name,
-                avgRuntimeMs: testResult.runtime_ms,
-                avgGflops: testResult.gflops ?? null,
-                runs: {
-                  create: runs.map((run: BenchmarkRunData) => ({
-                    runIndex: run.run_index,
-                    runtimeMs: run.runtime_ms,
-                    gflops: run.gflops ?? null,
-                    gpuSamples: (run.gpu_samples ??
-                      []) as unknown as Prisma.InputJsonValue,
-                    gpuMetrics: (run.gpu_metrics ??
-                      null) as unknown as Prisma.InputJsonValue,
-                  })),
-                },
-              },
-            });
-          }
+          return "STOP";
         }
-        return "CONTINUE";
-      }
 
-      if (s === SubmissionStatus.BENCHMARKED) {
-        const r = evt as import("~/types/submission").BenchmarkedResponse;
-        // Worker may or may not emit ACCEPTED. Persist final numbers here.
-        const updateData: Partial<Record<string, unknown>> & {
-          status: SubmissionStatusType;
-        } = {
-          status: SubmissionStatus.ACCEPTED,
-          benchmarkResults: benchResults as unknown as Prisma.InputJsonValue,
-        };
-        if (typeof r.avg_runtime_ms === "number")
-          (updateData as Record<string, unknown>).runtime = r.avg_runtime_ms;
-        if (typeof r.avg_gflops === "number")
-          (updateData as Record<string, unknown>).gflops = r.avg_gflops;
-
-        await db.submission.update({
-          where: { id: submission.id },
-          data: updateData,
-        });
-
-        // If your worker does NOT emit ACCEPTED, you can also emit it here:
-        res.write(
-          `event: ${SubmissionStatus.ACCEPTED}\ndata: ${JSON.stringify({
-            avg_runtime_ms: r.avg_runtime_ms,
-            avg_gflops: r.avg_gflops,
-            benchmark_results: benchResults,
-            total_tests: benchResults.length,
-          })}\n\n`
-        );
+        if (isSubmissionError(s)) {
+          const err = evt as Partial<
+            import("~/types/submission").ErrorResponse
+          >;
+          await db.submission.update({
+            where: { id: submission.id },
+            data: {
+              status: s,
+              errorMessage: err.message ?? "Unknown error",
+              errorDetails: err.details ?? "",
+            },
+          });
+          return "STOP";
+        }
 
         return "CONTINUE";
-      }
+      },
+      controller.signal,
+      engineAuthHeaders()
+    );
+  } catch (error) {
+    await finishWithStreamError("benchmarking", error);
+    return;
+  }
 
-      if (s === SubmissionStatus.WRONG_ANSWER) {
-        const err = evt as WrongAnswerResponse;
-        console.log("WRONG_ANSWER from benchmark", err);
-        await db.submission.update({
-          where: { id: submission.id },
-          data: {
-            status: SubmissionStatus.WRONG_ANSWER,
-            errorMessage:
-              err.debug_info?.message ?? "Failed benchmarking checksum",
-            passedTests,
-            totalTests: err.total_tests ?? totalTests,
-            errorDetails: JSON.stringify(err.debug_info ?? {}),
-          },
-        });
-        return "STOP";
-      }
-
-      if (isSubmissionError(s)) {
-        const err = evt as Partial<import("~/types/submission").ErrorResponse>;
-        await db.submission.update({
-          where: { id: submission.id },
-          data: {
-            status: s,
-            errorMessage: err.message ?? "Unknown error",
-            errorDetails: err.details ?? "",
-          },
-        });
-        return "STOP";
-      }
-
-      return "CONTINUE";
-    },
-    controller.signal,
-    engineAuthHeaders()
-  );
+  if (benchmarkResult === "DONE" && !benchmarkCompleted) {
+    await finishWithStreamError(
+      "benchmarking",
+      new Error("Benchmark stream ended before producing a final result")
+    );
+    return;
+  }
 
   clearInterval(heartbeat);
   try {

@@ -40,6 +40,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { MarkdownRenderer } from "~/components/blog";
 import { markdownContentStyles } from "~/constants/blog";
+import { DEFAULT_AVATAR_SRC } from "~/constants/avatar";
 
 // Typed helper aliases for tRPC outputs
 type CommentType = RouterOutputs["comments"]["getByPost"][number];
@@ -433,7 +434,7 @@ export default function BlogPost({ slug }: { slug: string }) {
                       <HStack spacing={2} cursor="pointer">
                         <Avatar
                           size="xs"
-                          src={post.author?.image ?? undefined}
+                          src={post.author?.image || DEFAULT_AVATAR_SRC}
                           name={post.author?.name ?? undefined}
                           bg="green.600"
                         />
@@ -444,7 +445,7 @@ export default function BlogPost({ slug }: { slug: string }) {
                     <HStack spacing={2}>
                       <Avatar
                         size="xs"
-                        src={post.author?.image ?? undefined}
+                        src={post.author?.image || DEFAULT_AVATAR_SRC}
                         name={post.author?.name ?? undefined}
                         bg="green.600"
                       />

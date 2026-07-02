@@ -44,6 +44,7 @@ import {
 } from "@chakra-ui/react";
 import { Layout } from "~/components/layout";
 import { api } from "~/utils/api";
+import { DEFAULT_AVATAR_SRC } from "~/constants/avatar";
 import { formatRuntime } from "~/utils/format";
 import { useRouter } from "next/router";
 import Link from "next/link";
@@ -596,12 +597,12 @@ export default function GroupDashboardPage() {
                           <Td color="white" borderBottom="none">
                             <HStack spacing={3}>
                               <Image
-                                src={member.user.image ?? ""}
+                                src={member.user.image || DEFAULT_AVATAR_SRC}
                                 alt={member.user.username ?? ""}
                                 w={8}
                                 h={8}
                                 borderRadius="full"
-                                fallbackSrc="https://via.placeholder.com/32"
+                                fallbackSrc={DEFAULT_AVATAR_SRC}
                               />
                               <Link href={`/user/${member.user.username}`}>
                                 <Text _hover={{ textDecoration: "underline" }}>

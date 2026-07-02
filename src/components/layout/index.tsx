@@ -34,7 +34,7 @@ export function Layout({
   const ogImageUrl = ogImage
     ? ogImage.startsWith("http")
       ? ogImage
-      : `https://tensara.org${ogImage}`
+      : `${env.NEXT_PUBLIC_BASE_URL}${ogImage}`
     : useDefaultOg
       ? `${env.NEXT_PUBLIC_BASE_URL}/api/og?title=${encodeURIComponent(ogTitle)}&subTitle=${encodeURIComponent(ogImgSubtitle)}`
       : undefined;
@@ -50,7 +50,7 @@ export function Layout({
         <meta property="og:type" content="website" />
         <meta property="og:title" content={siteTitle} />
         <meta property="og:description" content={ogDescription} />
-        <meta property="og:url" content="https://tensara.org" />
+        <meta property="og:url" content={env.NEXT_PUBLIC_BASE_URL} />
 
         {/* Twitter tags */}
         <meta name="twitter:card" content="summary_large_image" />
@@ -65,7 +65,9 @@ export function Layout({
         )}
       </Head>
 
-      <GoogleAnalytics gaId={env.NEXT_PUBLIC_GA_ID} />
+      {env.NEXT_PUBLIC_GA_ID ? (
+        <GoogleAnalytics gaId={env.NEXT_PUBLIC_GA_ID} />
+      ) : null}
 
       <Box h="100vh" bg="brand.dark" display="flex" flexDirection="column">
         <Box p={{ base: 2, md: 2 }}>

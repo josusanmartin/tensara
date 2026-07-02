@@ -1,0 +1,15 @@
+tensara.62.171.174.233.sslip.io {
+	encode gzip zstd
+
+	header {
+		X-Robots-Tag "noindex, nofollow, noarchive, nosnippet"
+	}
+
+	handle /robots.txt {
+		reverse_proxy 127.0.0.1:18080
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:18080
+	}
+}

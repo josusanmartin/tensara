@@ -186,9 +186,8 @@ export const RecentSubmissionsList: React.FC<RecentSubmissionsProps> = ({
                   >
                     <Text color="white" fontSize="sm" fontWeight="semibold">
                       {submission.gpuType
-                        ? (GPU_DISPLAY_ON_PROFILE[
-                            submission.gpuType as keyof typeof GPU_DISPLAY_ON_PROFILE
-                          ] ?? submission.gpuType)
+                        ? (GPU_DISPLAY_ON_PROFILE[submission.gpuType] ??
+                          submission.gpuType)
                         : "N/A"}
                     </Text>
                     <Text color="whiteAlpha.700" fontSize="xs" mt={0.5}>

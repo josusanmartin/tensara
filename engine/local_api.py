@@ -99,6 +99,7 @@ def _compile_cuda(gpu: str, solution_code: str, output_name: str):
         raise RuntimeError(("Unexpected Compilation Error", str(e))) from e
 
 
+@utils.subproc_generator(timeout=60)
 def local_binary_runner(
     type: str,
     compiled_lib: bytes | None,

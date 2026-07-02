@@ -71,7 +71,7 @@ cat > request.json << EOF
   "solution_code": $(printf '%s' "$solution_code" | jq -Rs .),
   "problem": "$problem_name",
   "problem_def": $(printf '%s' "$problem_def" | jq -Rs .),
-  "gpu": "RTXA6000",
+  "gpu": "${LOCAL_GPU_TYPE:-RTX5090}",
   "language": "$language"
 }
 EOF

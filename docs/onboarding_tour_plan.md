@@ -60,7 +60,7 @@ graph TD
 3.  **Understanding the Problem (`/problems/intro-problem` page - Problem View):**
     *   **Introduce Layout:** Explain split-panel (Problem Details left, Workspace right).
     *   **Focus on Left Panel (`ProblemView`):** Highlight Title, Difficulty, Description, Input Spec, Output Spec, Constraints, Examples. Mention "View My Submissions" button purpose.
-    *   **Introduce Right Panel (Workspace):** Highlight Language selector, fixed local RTX A6000 target, Code Editor (explain starter code), Reset Code button.
+    *   **Introduce Right Panel (Workspace):** Highlight Language selector, configured local GPU target, Code Editor (explain starter code), Reset Code button.
 
 4.  **Solving the Problem (Code Editor):**
     *   **Action:** Instruct user to replace starter code with a provided simple, correct solution.

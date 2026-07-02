@@ -68,6 +68,7 @@ import {
 
 import { api } from "~/utils/api";
 import { type ApiKey } from "~/types/misc";
+import { SINGLE_GPU_DISPLAY_NAME, SINGLE_GPU_TYPE } from "~/constants/gpu";
 
 // Create motion components
 const MotionBox = motion(Box);
@@ -106,6 +107,7 @@ export default function CLI() {
   const [hasCopiedKey, setHasCopiedKey] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
+  const localGpuLabel = SINGLE_GPU_DISPLAY_NAME.replace(/^NVIDIA\s+/, "");
 
   // tRPC queries and mutations
   const { data: apiKeys = [], refetch: refetchApiKeys } =
@@ -244,22 +246,20 @@ export default function CLI() {
     },
     {
       title: "Checker Command",
-      command: "tensara checker -g RTXA6000 -p relu -s ./relu/solution.cu",
-      description:
-        "Validate your solution against the problem specification on the local A6000",
+      command: `tensara checker -g ${SINGLE_GPU_TYPE} -p relu -s ./relu/solution.cu`,
+      description: `Validate your solution against the problem specification on the local ${localGpuLabel}`,
       icon: FiCheckCircle,
     },
     {
       title: "Benchmark Command",
-      command: "tensara benchmark -g RTXA6000 -p relu -s ./relu/solution.cu",
-      description: "Benchmark your solution on the local A6000",
+      command: `tensara benchmark -g ${SINGLE_GPU_TYPE} -p relu -s ./relu/solution.cu`,
+      description: `Benchmark your solution on the local ${localGpuLabel}`,
       icon: FiZap,
     },
     {
       title: "Submit Solution",
       command: "curl -N http://127.0.0.1:3001/api/submissions/submit",
-      description:
-        "Use the authenticated local submit API for RTXA6000 until the installed CLI supports this GPU",
+      description: `Use the authenticated local submit API for ${SINGLE_GPU_TYPE} until the installed CLI supports this GPU`,
       icon: FiSend,
     },
   ];
@@ -271,7 +271,7 @@ export default function CLI() {
 {
   "problemSlug": "relu",
   "language": "cuda",
-  "gpuType": "RTXA6000",
+  "gpuType": "${SINGLE_GPU_TYPE}",
   "code": "<paste solution.cu contents here>"
 }
 JSON`;
@@ -315,7 +315,7 @@ JSON`;
 {
   "problemSlug": "relu",
   "language": "cuda",
-  "gpuType": "RTXA6000",
+  "gpuType": "${SINGLE_GPU_TYPE}",
   "code": "<paste solution.cu contents here>",
   "profilingOptions": {
     "min_iterations": 8,
@@ -703,7 +703,7 @@ JSON`;
                   <SectionHeader
                     icon={FiCode}
                     title="Command Examples"
-                    description="Essential commands for the local A6000 runner"
+                    description={`Essential commands for the local ${localGpuLabel} runner`}
                   />
 
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
@@ -744,8 +744,8 @@ JSON`;
                 <MotionBox variants={itemVariants} mb={16}>
                   <SectionHeader
                     icon={FiSend}
-                    title="Local A6000 Submission"
-                    description="Submit through the authenticated local API while the installed CLI lacks RTXA6000 support"
+                    title={`Local ${localGpuLabel} Submission`}
+                    description={`Submit through the authenticated local API while the installed CLI lacks ${SINGLE_GPU_TYPE} support`}
                   />
 
                   <Box
@@ -758,10 +758,10 @@ JSON`;
                     <Text color="gray.300" mb={4}>
                       The released <Code colorScheme="purple">tensara</Code>{" "}
                       binary may reject{" "}
-                      <Code colorScheme="purple">RTXA6000</Code>. Use the local
-                      web/API submission route instead; it creates the same
-                      submission record and runs checker plus benchmark on the
-                      local A6000.
+                      <Code colorScheme="purple">{SINGLE_GPU_TYPE}</Code>. Use
+                      the local web/API submission route instead; it creates the
+                      same submission record and runs checker plus benchmark on
+                      the local {localGpuLabel}.
                     </Text>
                     <TerminalBox command={submitApiCommand} />
                     <Text color="gray.400" fontSize="sm" mt={4}>
@@ -791,11 +791,12 @@ JSON`;
                     mb={6}
                   >
                     <Text color="gray.300" mb={4}>
-                      The released CLI currently benchmarks on the local A6000
-                      with <Code colorScheme="purple">RTXA6000</Code>. Advanced
-                      profiling is exposed through the authenticated local API
-                      so profiler access can be restricted to accounts with the
-                      profiler permission.
+                      The released CLI currently benchmarks on the local{" "}
+                      {localGpuLabel} with{" "}
+                      <Code colorScheme="purple">{SINGLE_GPU_TYPE}</Code>.
+                      Advanced profiling is exposed through the authenticated
+                      local API so profiler access can be restricted to accounts
+                      with the profiler permission.
                     </Text>
                     <TerminalBox command={profilingApiCommand} />
                     <Text color="gray.400" fontSize="sm" mt={4}>

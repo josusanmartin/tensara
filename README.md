@@ -1,4 +1,3 @@
-
 <div align="center">
   <picture>
      <img width="70%" alt="Tensara" src="https://github.com/user-attachments/assets/acd95491-2104-48d4-af84-bf2b23c95e72" />
@@ -9,18 +8,19 @@
 
 [Tensara](https://tensara.org/) is a platform for GPU programming challenges in CUDA, Triton, Mojo, etc. Users can write efficient GPU kernels to solve our problems and see how their solutions compare with others on the platform.
 
-
 https://github.com/user-attachments/assets/96457139-2a27-493c-8352-df5ceb298369
 
+## Features
 
-
-
-## Features 
-- **Problems**: Solve 60+ challenges in CUDA, Triton, and Mojo across multiple difficulty levels. 
-- **Benchmarking**: Run your solutions on the local NVIDIA RTX A6000 with precise performance measurement.
+- **Problems**: Solve 60+ challenges in CUDA, Triton, and Mojo across multiple difficulty levels.
+- **Benchmarking**: Run your solutions on the configured local NVIDIA GPU with precise performance measurement.
 - **Leaderboards**: Compare your performance against other developers on the single local GPU ranking.
 - **Baseline Comparisons**: See how your optimized kernels stack up against PyTorch, Triton, and other framework implementations
 - **CLI Tool**: Submit and test solutions directly from your terminal with the Tensara CLI
+
+## Local Hosting
+
+See [docs/local-hosting.md](docs/local-hosting.md) for the local GPU runner setup, `.sslip.io` URL configuration, and no-indexing controls.
 
 ## Contributions
 
@@ -31,11 +31,11 @@ https://github.com/user-attachments/assets/96457139-2a27-493c-8352-df5ceb298369
 Thank you to our sponsors who help make Tensara possible:
 
 - [Modal](https://www.modal.com?utm_source=github&utm_medium=github&utm_campaign=tensara) - Modal lets you run
-jobs in the cloud, by just writing a few lines of Python. Customers use Modal to deploy Gen AI models at large scale,
-fine-tune large language models, run protein folding simulations, and much more.
+  jobs in the cloud, by just writing a few lines of Python. Customers use Modal to deploy Gen AI models at large scale,
+  fine-tune large language models, run protein folding simulations, and much more.
 
 We use Modal to securely run accurate benchmarks on various GPUs.
 
 ## Contact
 
-Interested in sponsoring? Contact us at [sponsor@tensara.org](mailto:sponsor@tensara.org) or hit us up [on Twitter](https://x.com/tensarahq)! 
+Interested in sponsoring? Contact us at [sponsor@tensara.org](mailto:sponsor@tensara.org) or hit us up [on Twitter](https://x.com/tensarahq)!

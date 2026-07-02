@@ -24,10 +24,11 @@ import {
 import { useSession, signIn, signOut } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { FiLogIn, FiMenu, FiChevronDown } from "react-icons/fi";
+import { FiLogIn, FiMenu, FiChevronDown, FiUserPlus } from "react-icons/fi";
 import { useState, useEffect } from "react";
 import { LayoutGroup, motion } from "framer-motion";
 import React from "react";
+import { DEFAULT_AVATAR_SRC } from "~/constants/avatar";
 
 interface HeaderProps {
   isCodingMode?: boolean;
@@ -161,11 +162,12 @@ export function Header({ isCodingMode = false, toolbar }: HeaderProps) {
                   }}
                 >
                   <Image
-                    src={session.user?.image ?? ""}
+                    src={session.user?.image || DEFAULT_AVATAR_SRC}
                     alt="Profile"
                     w={8}
                     h={8}
                     rounded="full"
+                    fallbackSrc={DEFAULT_AVATAR_SRC}
                     border="2px solid"
                     borderColor={menuIsOpen ? "brand.primary" : "transparent"}
                     transition="all 0.3s ease"
@@ -295,22 +297,40 @@ export function Header({ isCodingMode = false, toolbar }: HeaderProps) {
             </Portal>
           </Menu>
         ) : (
-          <Button
-            variant="ghost"
-            color="white"
-            onClick={handleSignIn}
-            size={isCodingMode ? "sm" : "md"}
-            fontSize={isCodingMode ? "11px" : "sm"}
-            leftIcon={<Icon as={FiLogIn} boxSize={isCodingMode ? 4 : 5} />}
-            bg="#24292e"
-            _hover={{
-              bg: "#2f363d",
-            }}
-            h={isCodingMode ? "30px" : undefined}
-            px={isCodingMode ? 3 : undefined}
-          >
-            Sign in
-          </Button>
+          <HStack spacing={2}>
+            <Button
+              variant="ghost"
+              color="white"
+              onClick={handleSignIn}
+              size={isCodingMode ? "sm" : "md"}
+              fontSize={isCodingMode ? "11px" : "sm"}
+              leftIcon={<Icon as={FiLogIn} boxSize={isCodingMode ? 4 : 5} />}
+              bg="#24292e"
+              _hover={{
+                bg: "#2f363d",
+              }}
+              h={isCodingMode ? "30px" : undefined}
+              px={isCodingMode ? 3 : undefined}
+            >
+              Sign in
+            </Button>
+            <Button
+              as={Link}
+              href={`/register?callbackUrl=${encodeURIComponent(router.asPath)}`}
+              color="white"
+              size={isCodingMode ? "sm" : "md"}
+              fontSize={isCodingMode ? "11px" : "sm"}
+              leftIcon={<Icon as={FiUserPlus} boxSize={isCodingMode ? 4 : 5} />}
+              bg="#0e8144"
+              _hover={{
+                bg: "#0a6434",
+              }}
+              h={isCodingMode ? "30px" : undefined}
+              px={isCodingMode ? 3 : undefined}
+            >
+              Register
+            </Button>
+          </HStack>
         )}
       </>
     );

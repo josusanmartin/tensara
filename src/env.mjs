@@ -19,8 +19,11 @@ export const env = createEnv({
    * For them to be exposed to the client, prefix them with `NEXT_PUBLIC_`.
    */
   client: {
-    NEXT_PUBLIC_GA_ID: z.string().min(1),
+    NEXT_PUBLIC_GA_ID: z.string().optional(),
     NEXT_PUBLIC_BASE_URL: z.string().url(),
+    NEXT_PUBLIC_TENSARA_GPU_TYPE: z.string().optional(),
+    NEXT_PUBLIC_TENSARA_GPU_DISPLAY_NAME: z.string().optional(),
+    NEXT_PUBLIC_TENSARA_GPU_COMPUTE_CAPABILITY: z.string().optional(),
     NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: z.string().optional(),
     NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
   },
@@ -36,6 +39,11 @@ export const env = createEnv({
     AUTH_SECRET: process.env.AUTH_SECRET,
     NEXT_PUBLIC_GA_ID: process.env.NEXT_PUBLIC_GA_ID,
     NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+    NEXT_PUBLIC_TENSARA_GPU_TYPE: process.env.NEXT_PUBLIC_TENSARA_GPU_TYPE,
+    NEXT_PUBLIC_TENSARA_GPU_DISPLAY_NAME:
+      process.env.NEXT_PUBLIC_TENSARA_GPU_DISPLAY_NAME,
+    NEXT_PUBLIC_TENSARA_GPU_COMPUTE_CAPABILITY:
+      process.env.NEXT_PUBLIC_TENSARA_GPU_COMPUTE_CAPABILITY,
     NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
       process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
     NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET:

@@ -88,7 +88,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   const session = await auth(context.req, context.res);
   if (!session) {
     return {
-      redirect: { destination: "/api/auth/signin", permanent: false },
+      redirect: { destination: "/login", permanent: false },
     };
   }
 

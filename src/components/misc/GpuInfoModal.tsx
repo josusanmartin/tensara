@@ -27,9 +27,14 @@ import { FaInfoCircle } from "react-icons/fa";
 import {
   CUDA_DRIVER_VERSION,
   CUDA_RUNTIME_VERSION,
-  DEVICE_QUERY_GPU_MAP,
+  getConfiguredCudaCapability,
+  getDeviceQueryGpu,
 } from "~/constants/deviceQuery";
-import { GPU_DISPLAY_NAMES, SINGLE_GPU_TYPE } from "~/constants/gpu";
+import {
+  GPU_DISPLAY_NAMES,
+  SINGLE_GPU_DISPLAY_NAME,
+  SINGLE_GPU_TYPE,
+} from "~/constants/gpu";
 
 interface GpuInfoModalProps {
   compact?: boolean;
@@ -47,6 +52,13 @@ export const GpuInfoModal = ({ compact = false }: GpuInfoModalProps) => {
   };
 
   const formatArray = (arr: number[]) => arr.join(" × ");
+  const formatCapability = (
+    capability: {
+      major: number;
+      minor: number;
+    } | null
+  ) =>
+    capability ? `${capability.major}.${capability.minor}` : "Not configured";
 
   const TableWrapper = ({ children }: { children: React.ReactNode }) => (
     <Table
@@ -66,8 +78,55 @@ export const GpuInfoModal = ({ compact = false }: GpuInfoModalProps) => {
     </Table>
   );
 
-  const renderGpuInfo = (gpuType: keyof typeof DEVICE_QUERY_GPU_MAP) => {
-    const gpuInfo = DEVICE_QUERY_GPU_MAP[gpuType]!;
+  const renderConfiguredGpuInfo = (gpuType: string) => {
+    const capability = getConfiguredCudaCapability(gpuType);
+
+    return (
+      <Box maxW="xl">
+        <Text fontWeight="semibold" mb={3} color="gray.300">
+          Configured Local GPU
+        </Text>
+        <TableWrapper>
+          <Tbody>
+            <Tr>
+              <Td color="gray.400" pl={0}>
+                GPU Model
+              </Td>
+              <Td color="white" textAlign="right">
+                {GPU_DISPLAY_NAMES[gpuType] ?? SINGLE_GPU_DISPLAY_NAME}
+              </Td>
+            </Tr>
+            <Tr>
+              <Td color="gray.400" pl={0}>
+                Compute Capability
+              </Td>
+              <Td color="white" textAlign="right">
+                {formatCapability(capability)}
+              </Td>
+            </Tr>
+            <Tr>
+              <Td color="gray.400" pl={0}>
+                GPU Type
+              </Td>
+              <Td color="white" textAlign="right">
+                {gpuType}
+              </Td>
+            </Tr>
+          </Tbody>
+        </TableWrapper>
+        <Text color="gray.400" fontSize="sm" mt={4}>
+          Detailed deviceQuery specifications are not configured for this GPU.
+        </Text>
+      </Box>
+    );
+  };
+
+  const renderGpuInfo = (gpuType: string) => {
+    const gpuInfo = getDeviceQueryGpu(gpuType);
+
+    if (!gpuInfo) {
+      return renderConfiguredGpuInfo(gpuType);
+    }
 
     return (
       <Grid templateColumns="repeat(2, 1fr)" gap={8}>

@@ -1,0 +1,15 @@
+[Unit]
+Description=Tensara SSH tunnel to Vast GPU engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=josu
+Environment=HOME=/home/josu
+ExecStart=/usr/bin/ssh -NT -i /home/josu/.ssh/tensara_vast_ed25519 -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -p 25555 -L 127.0.0.1:18000:127.0.0.1:18000 root@192.3.91.246
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

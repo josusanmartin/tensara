@@ -33,6 +33,19 @@ const config = {
   },
   transpilePackages: ["geist"],
   distDir: process.env.BUILD_DIR || ".next", // Set custom build directory
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "X-Robots-Tag",
+            value: "noindex, nofollow, noarchive, nosnippet",
+          },
+        ],
+      },
+    ];
+  },
 
   // Explicitly configure webpack to handle path aliases
   webpack: (config) => {

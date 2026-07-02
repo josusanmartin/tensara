@@ -20,9 +20,87 @@ import numpy as np
 
 JS_MAX_SAFE = 2**53 - 1
 
-GPU_COMPUTE_CAPABILITIES = {
+KNOWN_GPU_COMPUTE_CAPABILITIES = {
     "RTXA6000": "86",
+    "RTX4090": "89",
+    "RTX5090": "120",
+    "L4": "89",
+    "L40S": "89",
+    "A10G": "86",
+    "A100-80GB": "80",
+    "H100": "90",
+    "B200": "100",
 }
+
+
+def _normalize_compute_capability(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    normalized = value.strip().lower()
+    normalized = normalized.removeprefix("sm_").removeprefix("compute_")
+    normalized = normalized.replace(".", "")
+
+    if normalized.isdigit():
+        return normalized
+
+    return None
+
+
+def _configured_gpu_type() -> str:
+    return (
+        os.environ.get("LOCAL_GPU_TYPE")
+        or os.environ.get("TENSARA_GPU_TYPE")
+        or os.environ.get("NEXT_PUBLIC_TENSARA_GPU_TYPE")
+        or "RTX5090"
+    ).strip()
+
+
+def _configured_gpu_compute_capabilities() -> dict[str, str]:
+    raw_map = os.environ.get("LOCAL_GPU_COMPUTE_CAPABILITIES") or os.environ.get(
+        "TENSARA_GPU_COMPUTE_CAPABILITIES"
+    )
+    if raw_map:
+        configured: dict[str, str] = {}
+        for item in raw_map.split(","):
+            if not item.strip():
+                continue
+            if "=" in item:
+                gpu_type, capability = item.split("=", 1)
+            elif ":" in item:
+                gpu_type, capability = item.split(":", 1)
+            else:
+                raise ValueError(
+                    "LOCAL_GPU_COMPUTE_CAPABILITIES entries must look like RTX5090=120"
+                )
+
+            normalized = _normalize_compute_capability(capability)
+            if not normalized:
+                raise ValueError(
+                    f"Invalid compute capability for {gpu_type.strip()}: {capability}"
+                )
+            configured[gpu_type.strip()] = normalized
+
+        if configured:
+            return configured
+
+    gpu_type = _configured_gpu_type()
+    capability = _normalize_compute_capability(
+        os.environ.get("LOCAL_GPU_COMPUTE_CAPABILITY")
+        or os.environ.get("TENSARA_GPU_COMPUTE_CAPABILITY")
+        or os.environ.get("NEXT_PUBLIC_TENSARA_GPU_COMPUTE_CAPABILITY")
+    )
+    capability = capability or KNOWN_GPU_COMPUTE_CAPABILITIES.get(gpu_type)
+    if not capability:
+        raise ValueError(
+            "Set LOCAL_GPU_COMPUTE_CAPABILITY for unknown local GPU "
+            f"{gpu_type!r}. Example: LOCAL_GPU_COMPUTE_CAPABILITY=120"
+        )
+
+    return {gpu_type: capability}
+
+
+GPU_COMPUTE_CAPABILITIES = _configured_gpu_compute_capabilities()
 
 
 class NVCCError(Exception):

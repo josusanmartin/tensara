@@ -295,8 +295,7 @@ const MySubmissions = ({
                       {LANGUAGE_PROFILE_DISPLAY_NAMES[submission.language]} •{" "}
                       {
                         GPU_DISPLAY_ON_PROFILE[
-                          (submission.gpuType ??
-                            SINGLE_GPU_TYPE) as keyof typeof GPU_DISPLAY_ON_PROFILE
+                          submission.gpuType ?? SINGLE_GPU_TYPE
                         ]
                       }
                     </Text>

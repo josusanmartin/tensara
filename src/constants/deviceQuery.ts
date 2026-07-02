@@ -1,3 +1,5 @@
+import { SINGLE_GPU_TYPE } from "./gpu";
+
 export type DeviceQueryGpu = {
   name: string;
   cudaCapability: {
@@ -46,6 +48,47 @@ export const NVCC_CMD = "nvcc -std=c++20 -O2 -Xcompiler -fPIC";
 export const MOJO_CMD = "mojo build --optimization-level=3";
 export const TRITON_VERSION = "3.2.0";
 export const PYPTX_VERSION = "0.1.0";
+
+const KNOWN_CUDA_CAPABILITIES: Record<
+  string,
+  { major: number; minor: number }
+> = {
+  RTX5090: { major: 12, minor: 0 },
+  RTX4090: { major: 8, minor: 9 },
+  L4: { major: 8, minor: 9 },
+  L40S: { major: 8, minor: 9 },
+  A10G: { major: 8, minor: 6 },
+  "A100-80GB": { major: 8, minor: 0 },
+  H100: { major: 9, minor: 0 },
+  B200: { major: 10, minor: 0 },
+};
+
+export function parseCudaCapability(value?: string | null) {
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/^sm_/, "")
+    .replace(/^compute_/, "");
+  if (!normalized) return null;
+
+  const dotted = /^(\d+)\.(\d+)$/.exec(normalized);
+  if (dotted) {
+    return {
+      major: Number(dotted[1]),
+      minor: Number(dotted[2]),
+    };
+  }
+
+  const compact = /^(\d+)(\d)$/.exec(normalized);
+  if (compact) {
+    return {
+      major: Number(compact[1]),
+      minor: Number(compact[2]),
+    };
+  }
+
+  return null;
+}
 
 export const DEVICE_QUERY_GPU_MAP: Record<string, DeviceQueryGpu> = {
   RTXA6000: {
@@ -329,3 +372,20 @@ export const DEVICE_QUERY_GPU_MAP: Record<string, DeviceQueryGpu> = {
     textureAlignment: 512, // bytes
   },
 } as const;
+
+export function getConfiguredCudaCapability(gpuType = SINGLE_GPU_TYPE) {
+  const knownGpu = getDeviceQueryGpu(gpuType);
+  return (
+    knownGpu?.cudaCapability ??
+    KNOWN_CUDA_CAPABILITIES[gpuType] ??
+    parseCudaCapability(process.env.NEXT_PUBLIC_TENSARA_GPU_COMPUTE_CAPABILITY)
+  );
+}
+
+export function getDeviceQueryGpu(gpuType: string): DeviceQueryGpu | null {
+  if (!Object.prototype.hasOwnProperty.call(DEVICE_QUERY_GPU_MAP, gpuType)) {
+    return null;
+  }
+
+  return DEVICE_QUERY_GPU_MAP[gpuType] ?? null;
+}

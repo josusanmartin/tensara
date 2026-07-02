@@ -26,8 +26,11 @@ export const env = createEnv({
    */
   client: {
     // NEXT_PUBLIC_CLIENTVAR: z.string(),
-    NEXT_PUBLIC_GA_ID: z.string(),
+    NEXT_PUBLIC_GA_ID: z.string().optional(),
     NEXT_PUBLIC_BASE_URL: z.string().url(),
+    NEXT_PUBLIC_TENSARA_GPU_TYPE: z.string().optional(),
+    NEXT_PUBLIC_TENSARA_GPU_DISPLAY_NAME: z.string().optional(),
+    NEXT_PUBLIC_TENSARA_GPU_COMPUTE_CAPABILITY: z.string().optional(),
     NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: z.string().optional(),
     NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
   },
@@ -44,6 +47,11 @@ export const env = createEnv({
     MODAL_ENDPOINT: process.env.MODAL_ENDPOINT,
     LOCAL_ENGINE_TOKEN: process.env.LOCAL_ENGINE_TOKEN,
     NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+    NEXT_PUBLIC_TENSARA_GPU_TYPE: process.env.NEXT_PUBLIC_TENSARA_GPU_TYPE,
+    NEXT_PUBLIC_TENSARA_GPU_DISPLAY_NAME:
+      process.env.NEXT_PUBLIC_TENSARA_GPU_DISPLAY_NAME,
+    NEXT_PUBLIC_TENSARA_GPU_COMPUTE_CAPABILITY:
+      process.env.NEXT_PUBLIC_TENSARA_GPU_COMPUTE_CAPABILITY,
     NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
       process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
     NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET:
